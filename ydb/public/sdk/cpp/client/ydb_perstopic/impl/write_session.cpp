@@ -1,7 +1,7 @@
 #include "write_session.h"
 
-#include <ydb/public/sdk/cpp/client/ydb_persqueue_core/persqueue.h>
-#include <ydb/public/sdk/cpp/client/ydb_persqueue_core/impl/log_lazy.h>
+#include <ydb/public/sdk/cpp/client/ydb_perstopic/persqueue.h>
+#include <ydb/public/sdk/cpp/client/ydb_perstopic/impl/log_lazy.h>
 
 #include <library/cpp/string_utils/url/url.h>
 

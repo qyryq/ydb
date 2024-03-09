@@ -4,8 +4,8 @@
 #include "persqueue_impl.h"
 #include "write_session_impl.h"
 
-#include <ydb/public/sdk/cpp/client/ydb_persqueue_core/persqueue.h>
-#include <ydb/public/sdk/cpp/client/ydb_persqueue_core/impl/callback_context.h>
+#include <ydb/public/sdk/cpp/client/ydb_perstopic/persqueue.h>
+#include <ydb/public/sdk/cpp/client/ydb_perstopic/impl/callback_context.h>
 
 #include <util/generic/buffer.h>
 

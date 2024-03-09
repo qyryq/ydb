@@ -1,6 +1,6 @@
 #pragma once
 #include <ydb/core/testlib/test_pq_client.h>
-#include <ydb/public/sdk/cpp/client/ydb_persqueue_core/persqueue.h>
+#include <ydb/public/sdk/cpp/client/ydb_perstopic/persqueue.h>
 
 #include <ydb/library/grpc/server/grpc_server.h>
 

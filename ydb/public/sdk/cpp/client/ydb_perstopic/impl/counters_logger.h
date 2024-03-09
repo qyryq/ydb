@@ -3,10 +3,10 @@
 #include <ydb/public/sdk/cpp/client/impl/ydb_internal/grpc_connections/grpc_connections.h>
 
 #include <ydb/public/sdk/cpp/client/ydb_common_client/impl/client.h>
-#include <ydb/public/sdk/cpp/client/ydb_persqueue_core/persqueue.h>
+#include <ydb/public/sdk/cpp/client/ydb_perstopic/persqueue.h>
 #include <ydb/public/sdk/cpp/client/ydb_topic/topic.h>
-#include <ydb/public/sdk/cpp/client/ydb_persqueue_core/impl/callback_context.h>
-#include <ydb/public/sdk/cpp/client/ydb_persqueue_core/impl/log_lazy.h>
+#include <ydb/public/sdk/cpp/client/ydb_perstopic/impl/callback_context.h>
+#include <ydb/public/sdk/cpp/client/ydb_perstopic/impl/log_lazy.h>
 
 #include <util/system/spinlock.h>
 

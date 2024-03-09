@@ -1,4 +1,4 @@
-UNITTEST_FOR(ydb/public/sdk/cpp/client/ydb_persqueue_core)
+UNITTEST_FOR(ydb/public/sdk/cpp/client/ydb_perstopic)
 
 IF (SANITIZER_TYPE == "thread" OR WITH_VALGRIND)
     TIMEOUT(1200)
@@ -17,9 +17,9 @@ PEERDIR(
     ydb/public/lib/json_value
     ydb/public/lib/yson_value
     ydb/public/sdk/cpp/client/ydb_driver
-    ydb/public/sdk/cpp/client/ydb_persqueue_core
-    ydb/public/sdk/cpp/client/ydb_persqueue_core/impl
-    ydb/public/sdk/cpp/client/ydb_persqueue_core/ut/ut_utils
+    ydb/public/sdk/cpp/client/ydb_perstopic
+    ydb/public/sdk/cpp/client/ydb_perstopic/impl
+    ydb/public/sdk/cpp/client/ydb_perstopic/ut/ut_utils
     ydb/public/sdk/cpp/client/ydb_persqueue_public/codecs
 )
 

@@ -1,6 +1,6 @@
 LIBRARY()
 
-GENERATE_ENUM_SERIALIZATION(ydb/public/sdk/cpp/client/ydb_persqueue_core/persqueue.h)
+GENERATE_ENUM_SERIALIZATION(ydb/public/sdk/cpp/client/ydb_perstopic/persqueue.h)
 
 SRCS(
     persqueue.h
@@ -8,7 +8,7 @@ SRCS(
 
 PEERDIR(
     library/cpp/retry
-    ydb/public/sdk/cpp/client/ydb_persqueue_core/impl
+    ydb/public/sdk/cpp/client/ydb_perstopic/impl
     ydb/public/sdk/cpp/client/ydb_proto
     ydb/public/sdk/cpp/client/ydb_driver
     ydb/public/api/grpc

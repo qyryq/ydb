@@ -6,7 +6,7 @@
 #include "persqueue_impl.h"
 #include "common.h"
 
-#include <ydb/public/sdk/cpp/client/ydb_persqueue_core/impl/log_lazy.h>
+#include <ydb/public/sdk/cpp/client/ydb_perstopic/impl/log_lazy.h>
 
 #define INCLUDE_YDB_INTERNAL_H
 #include <ydb/public/sdk/cpp/client/impl/ydb_internal/logger/log.h>

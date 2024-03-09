@@ -1,6 +1,6 @@
 #pragma once
 
-#include <ydb/public/sdk/cpp/client/ydb_persqueue_core/persqueue.h>
+#include <ydb/public/sdk/cpp/client/ydb_perstopic/persqueue.h>
 #include <ydb/public/sdk/cpp/client/ydb_common_client/impl/client.h>
 
 #include <util/generic/queue.h>

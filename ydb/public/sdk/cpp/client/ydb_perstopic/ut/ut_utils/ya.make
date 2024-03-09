@@ -17,7 +17,7 @@ PEERDIR(
     ydb/core/testlib/default
     ydb/library/persqueue/topic_parser_public
     ydb/public/sdk/cpp/client/ydb_driver
-    ydb/public/sdk/cpp/client/ydb_persqueue_core
+    ydb/public/sdk/cpp/client/ydb_perstopic
     ydb/public/sdk/cpp/client/ydb_persqueue_public
     ydb/public/sdk/cpp/client/ydb_table
 )

@@ -1,6 +1,6 @@
 #include "read_session.h"
 
-#include <ydb/public/sdk/cpp/client/ydb_persqueue_core/persqueue.h>
+#include <ydb/public/sdk/cpp/client/ydb_perstopic/persqueue.h>
 
 namespace NYdb::NPersQueue {
 

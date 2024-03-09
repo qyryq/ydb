@@ -8,7 +8,7 @@
 
 #include <ydb/public/api/grpc/draft/ydb_persqueue_v1.grpc.pb.h>
 #include <ydb/public/api/grpc/ydb_topic_v1.grpc.pb.h>
-#include <ydb/public/sdk/cpp/client/ydb_persqueue_core/persqueue.h>
+#include <ydb/public/sdk/cpp/client/ydb_perstopic/persqueue.h>
 #include <ydb/public/sdk/cpp/client/ydb_topic/topic.h>
 
 #include <library/cpp/containers/disjoint_interval_tree/disjoint_interval_tree.h>
