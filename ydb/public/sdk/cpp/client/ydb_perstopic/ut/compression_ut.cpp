@@ -1,6 +1,6 @@
 #include <ydb/public/sdk/cpp/client/ydb_perstopic/ut/ut_utils/ut_utils.h>
 
-namespace NYdb::NPersQueue::NTests {
+namespace NYdb::NPQTopic::NTests {
 
 Y_UNIT_TEST_SUITE(Compression) {
     TVector<TString> GetTestMessages(ECodec codec = ECodec::RAW) {
@@ -84,7 +84,7 @@ Y_UNIT_TEST_SUITE(Compression) {
         NThreading::TPromise<void> checkedPromise = NThreading::NewPromise<void>();
         auto totalReceived = 0u;
         readSettings.EventHandlers_.SimpleDataHandlers(
-            [&](const NYdb::NPersQueue::TReadSessionEvent::TDataReceivedEvent& ev) {
+            [&](const NYdb::NPQTopic::TReadSessionEvent::TDataReceivedEvent& ev) {
                 Cerr << Endl << Endl << Endl << "Got messages" << Endl << Endl;
                 if (decompress) {
                     UNIT_ASSERT_NO_EXCEPTION(ev.GetMessages());

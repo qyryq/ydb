@@ -16,8 +16,8 @@
 #include <future>
 
 using namespace NYdb;
-using namespace NYdb::NPersQueue;
-using IExecutor = NYdb::NPersQueue::IExecutor;
+using namespace NYdb::NPQTopic;
+using IExecutor = NYdb::NPQTopic::IExecutor;
 using namespace ::testing; // Google mock.
 
 #define UNIT_ASSERT_EVENT_TYPE(event, type)                 \
@@ -584,8 +584,8 @@ TReadSessionImplTestSetup::TReadSessionImplTestSetup() {
     Settings
         .AppendTopics({"TestTopic"})
         .ConsumerName("TestConsumer")
-        .RetryPolicy(NYdb::NPersQueue::IRetryPolicy::GetFixedIntervalPolicy(TDuration::MilliSeconds(10)))
-        .Counters(MakeIntrusive<NYdb::NPersQueue::TReaderCounters>(MakeIntrusive<::NMonitoring::TDynamicCounters>()));
+        .RetryPolicy(NYdb::NPQTopic::IRetryPolicy::GetFixedIntervalPolicy(TDuration::MilliSeconds(10)))
+        .Counters(MakeIntrusive<NYdb::NPQTopic::TReaderCounters>(MakeIntrusive<::NMonitoring::TDynamicCounters>()));
 
     Log.SetFormatter(GetPrefixLogFormatter(""));
 
@@ -678,10 +678,10 @@ void TReadSessionImplTestSetup::AssertNoEvents() {
     UNIT_ASSERT(!event);
 }
 
-using NYdb::NPersQueue::NTests::TPersQueueYdbSdkTestSetup;
+using NYdb::NPQTopic::NTests::TPersQueueYdbSdkTestSetup;
 Y_UNIT_TEST_SUITE(PersQueueSdkReadSessionTest) {
     void ReadSessionImpl(bool close, bool commit, bool explicitlySpecifiedPartitions = false) {
-        NYdb::NPersQueue::NTests::TPersQueueYdbSdkTestSetup setup("ReadSession");
+        NYdb::NPQTopic::NTests::TPersQueueYdbSdkTestSetup setup("ReadSession");
         setup.WriteToTopic({"message1", "message2"});
         auto settings = setup.GetReadSessionSettings();
         if (explicitlySpecifiedPartitions) {
@@ -811,7 +811,7 @@ Y_UNIT_TEST_SUITE(PersQueueSdkReadSessionTest) {
 
         TReadSessionSettings settings = setup.GetReadSessionSettings();
         // Set policy with max retries == 3.
-        settings.RetryPolicy(NYdb::NPersQueue::IRetryPolicy::GetExponentialBackoffPolicy(TDuration::MilliSeconds(10), TDuration::MilliSeconds(10), TDuration::MilliSeconds(100), 3));
+        settings.RetryPolicy(NYdb::NPQTopic::IRetryPolicy::GetExponentialBackoffPolicy(TDuration::MilliSeconds(10), TDuration::MilliSeconds(10), TDuration::MilliSeconds(100), 3));
         std::shared_ptr<IReadSession> session = setup.GetPersQueueClient().CreateReadSession(settings);
         TMaybe<TReadSessionEvent::TEvent> event = session->GetEvent(true);
         UNIT_ASSERT(event);
@@ -856,7 +856,7 @@ Y_UNIT_TEST_SUITE(PersQueueSdkReadSessionTest) {
     }
 
     Y_UNIT_TEST(StopResumeReadingData) {
-        NYdb::NPersQueue::NTests::TPersQueueYdbSdkTestSetup setup("ReadSession");
+        NYdb::NPQTopic::NTests::TPersQueueYdbSdkTestSetup setup("ReadSession");
         setup.WriteToTopic({"message1"});
         std::shared_ptr<IReadSession> session = setup.GetPersQueueClient().CreateReadSession(setup.GetReadSessionSettings());
 
@@ -1015,7 +1015,7 @@ Y_UNIT_TEST_SUITE(ReadSessionImplTest) {
 
     void StopsRetryAfterFailedAttemptImpl(bool timeout) {
         TReadSessionImplTestSetup setup;
-        setup.Settings.RetryPolicy(NYdb::NPersQueue::IRetryPolicy::GetNoRetryPolicy());
+        setup.Settings.RetryPolicy(NYdb::NPQTopic::IRetryPolicy::GetNoRetryPolicy());
         EXPECT_CALL(*setup.MockProcessorFactory, OnCreateProcessor(_))
             .WillOnce([&]() {
                 if (timeout)
@@ -1041,7 +1041,7 @@ Y_UNIT_TEST_SUITE(ReadSessionImplTest) {
     }
 
     Y_UNIT_TEST(UsesOnRetryStateDuringRetries) {
-        class TTestRetryState : public NYdb::NPersQueue::IRetryPolicy::IRetryState {
+        class TTestRetryState : public NYdb::NPQTopic::IRetryPolicy::IRetryState {
             TDuration Delay;
 
             TMaybe<TDuration> GetNextRetryDelay(NYdb::EStatus) override {
@@ -1050,13 +1050,13 @@ Y_UNIT_TEST_SUITE(ReadSessionImplTest) {
             }
         };
 
-        class TTestRetryPolicy : public NYdb::NPersQueue::IRetryPolicy {
+        class TTestRetryPolicy : public NYdb::NPQTopic::IRetryPolicy {
             IRetryState::TPtr CreateRetryState() const override {
                 return IRetryState::TPtr(new TTestRetryState());
             }
         };
 
-        std::shared_ptr<NYdb::NPersQueue::IRetryPolicy::IRetryState> state(new TTestRetryState());
+        std::shared_ptr<NYdb::NPQTopic::IRetryPolicy::IRetryState> state(new TTestRetryState());
         TReadSessionImplTestSetup setup;
         ON_CALL(*setup.MockProcessorFactory, ValidateConnectTimeout(_))
             .WillByDefault([state](TDuration timeout) mutable {
@@ -1629,7 +1629,7 @@ Y_UNIT_TEST_SUITE(ReadSessionImplTest) {
     }
 
     Y_UNIT_TEST(DataReceivedCallbackReal) {
-        NYdb::NPersQueue::NTests::TPersQueueYdbSdkTestSetup setup("ReadSession");
+        NYdb::NPQTopic::NTests::TPersQueueYdbSdkTestSetup setup("ReadSession");
         auto settings = setup.GetReadSessionSettings();
 
         auto calledPromise = NThreading::NewPromise<void>();
@@ -1862,7 +1862,7 @@ Y_UNIT_TEST_SUITE(ReadSessionImplTest) {
     }
 
     Y_UNIT_TEST(LOGBROKER_7702) {
-        using namespace NYdb::NPersQueue;
+        using namespace NYdb::NPQTopic;
 
         using TServiceEvent =
             typename TAReadSessionEvent<true>::TPartitionStreamStatusEvent;

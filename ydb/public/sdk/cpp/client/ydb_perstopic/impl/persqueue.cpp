@@ -9,7 +9,7 @@
 #include <util/string/cast.h>
 #include <util/string/subst.h>
 
-namespace NYdb::NPersQueue {
+namespace NYdb::NPQTopic {
 
 const TVector<ECodec>& GetDefaultCodecs() {
     static const TVector<ECodec> codecs = {};
@@ -222,4 +222,4 @@ std::shared_ptr<ISimpleBlockingWriteSession> TPersQueueClient::CreateSimpleBlock
     return Impl_->CreateSimpleWriteSession(settings);
 }
 
-} // namespace NYdb::NPersQueue
+} // namespace NYdb::NPQTopic

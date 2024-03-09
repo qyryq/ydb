@@ -10,7 +10,7 @@
 
 #include <util/system/spinlock.h>
 
-namespace NYdb::NPersQueue {
+namespace NYdb::NPQTopic {
 
 template <bool UseMigrationProtocol>
 class TSingleClusterReadSessionImpl;
@@ -24,7 +24,7 @@ public:
     static constexpr auto UPDATE_PERIOD = TDuration::Seconds(1);
 
     using TReaderCountersPtr = std::conditional_t<UseMigrationProtocol,
-        NYdb::NPersQueue::TReaderCounters::TPtr,
+        NYdb::NPQTopic::TReaderCounters::TPtr,
         NYdb::NTopic::TReaderCounters::TPtr>;
 
 public:

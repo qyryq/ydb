@@ -8,7 +8,7 @@
 
 #include <util/generic/buffer.h>
 
-namespace NYdb::NPersQueue {
+namespace NYdb::NPQTopic {
 
 inline const TString& GetCodecId(const ECodec codec) {
     static THashMap<ECodec, TString> idByCodec{
@@ -450,4 +450,4 @@ protected:
     ui64 MessagesAcquired = 0;
 };
 
-}; // namespace NYdb::NPersQueue
+}; // namespace NYdb::NPQTopic

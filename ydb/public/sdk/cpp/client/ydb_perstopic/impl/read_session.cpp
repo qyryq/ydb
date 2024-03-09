@@ -18,7 +18,7 @@
 
 #include <variant>
 
-namespace NYdb::NPersQueue {
+namespace NYdb::NPQTopic {
 
 static const TString DRIVER_IS_STOPPING_DESCRIPTION = "Driver is stopping";
 
@@ -559,7 +559,7 @@ void TReadSession::SetupCountersLogger() {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// NPersQueue::TReadSessionEvent
+// NPQTopic::TReadSessionEvent
 
 TReadSessionEvent::TCreatePartitionStreamEvent::TCreatePartitionStreamEvent(TPartitionStream::TPtr partitionStream, ui64 committedOffset, ui64 endOffset)
     : PartitionStream(std::move(partitionStream))
@@ -967,4 +967,4 @@ TReaderCounters::TReaderCounters(const TIntrusivePtr<::NMonitoring::TDynamicCoun
 
 #undef HISTOGRAM_SETUP
 
-} // namespace NYdb::NPersQueue
+} // namespace NYdb::NPQTopic

@@ -1,6 +1,6 @@
 #include "test_server.h"
 
-namespace NPersQueue {
+namespace NPQTopic {
 
 const TVector<NKikimrServices::EServiceKikimr> TTestServer::LOGGED_SERVICES = {
     NKikimrServices::PQ_READ_PROXY,
@@ -10,4 +10,4 @@ const TVector<NKikimrServices::EServiceKikimr> TTestServer::LOGGED_SERVICES = {
     NKikimrServices::PERSQUEUE_READ_BALANCER
 };
 
-} // namespace NPersQueue
+} // namespace NPQTopic

@@ -22,16 +22,16 @@
 #include <deque>
 #include <vector>
 
-namespace NYdb::NPersQueue {
+namespace NYdb::NPQTopic {
 
 template <bool UseMigrationProtocol>
 using TClientImpl = std::conditional_t<UseMigrationProtocol,
-    NYdb::NPersQueue::TPersQueueClient::TImpl,
+    NYdb::NPQTopic::TPersQueueClient::TImpl,
     NYdb::NTopic::TTopicClient::TImpl>;
 
 template <bool UseMigrationProtocol>
 using ECodecAlias = std::conditional_t<UseMigrationProtocol,
-    NYdb::NPersQueue::ECodec,
+    NYdb::NPQTopic::ECodec,
     NYdb::NTopic::ECodec>;
 
 template <bool UseMigrationProtocol>
@@ -58,42 +58,42 @@ using TPartitionData = std::conditional_t<UseMigrationProtocol,
 
 template <bool UseMigrationProtocol>
 using TAWriteSessionMeta = std::conditional_t<UseMigrationProtocol,
-    NYdb::NPersQueue::TWriteSessionMeta,
+    NYdb::NPQTopic::TWriteSessionMeta,
     NYdb::NTopic::TWriteSessionMeta>;
 
 template <bool UseMigrationProtocol>
 using TAMessageMeta = std::conditional_t<UseMigrationProtocol,
-    NYdb::NPersQueue::TMessageMeta,
+    NYdb::NPQTopic::TMessageMeta,
     NYdb::NTopic::TMessageMeta>;
 
 template <bool UseMigrationProtocol>
 using TASessionClosedEvent = std::conditional_t<UseMigrationProtocol,
-    NYdb::NPersQueue::TSessionClosedEvent,
+    NYdb::NPQTopic::TSessionClosedEvent,
     NYdb::NTopic::TSessionClosedEvent>;
 
 template <bool UseMigrationProtocol>
 using TAPartitionStream = std::conditional_t<UseMigrationProtocol,
-    NYdb::NPersQueue::TPartitionStream,
+    NYdb::NPQTopic::TPartitionStream,
     NYdb::NTopic::TPartitionSession>;
 
 template <bool UseMigrationProtocol>
 using TAReadSessionEvent = std::conditional_t<UseMigrationProtocol,
-    NYdb::NPersQueue::TReadSessionEvent,
+    NYdb::NPQTopic::TReadSessionEvent,
     NYdb::NTopic::TReadSessionEvent>;
 
 template <bool UseMigrationProtocol>
 using IARetryPolicy = std::conditional_t<UseMigrationProtocol,
-    NYdb::NPersQueue::IRetryPolicy,
+    NYdb::NPQTopic::IRetryPolicy,
     NYdb::NTopic::IRetryPolicy>;
 
 template <bool UseMigrationProtocol>
 using IAExecutor = std::conditional_t<UseMigrationProtocol,
-    NYdb::NPersQueue::IExecutor,
+    NYdb::NPQTopic::IExecutor,
     NYdb::NTopic::IExecutor>;
 
 template <bool UseMigrationProtocol>
 using TAReadSessionSettings = std::conditional_t<UseMigrationProtocol,
-    NYdb::NPersQueue::TReadSessionSettings,
+    NYdb::NPQTopic::TReadSessionSettings,
     NYdb::NTopic::TReadSessionSettings>;
 
 template <bool UseMigrationProtocol>
@@ -919,11 +919,11 @@ private:
     bool HasEventCallbacks;
 };
 
-} // namespace NYdb::NPersQueue
+} // namespace NYdb::NPQTopic
 
 template <>
-struct THash<NYdb::NPersQueue::TPartitionStreamImpl<false>::TKey> {
-    size_t operator()(const NYdb::NPersQueue::TPartitionStreamImpl<false>::TKey& key) const {
+struct THash<NYdb::NPQTopic::TPartitionStreamImpl<false>::TKey> {
+    size_t operator()(const NYdb::NPQTopic::TPartitionStreamImpl<false>::TKey& key) const {
         THash<TString> strHash;
         const size_t h1 = strHash(key.Topic);
         const size_t h2 = NumericHash(key.Partition);
@@ -932,8 +932,8 @@ struct THash<NYdb::NPersQueue::TPartitionStreamImpl<false>::TKey> {
 };
 
 template <>
-struct THash<NYdb::NPersQueue::TPartitionStreamImpl<true>::TKey> {
-    size_t operator()(const NYdb::NPersQueue::TPartitionStreamImpl<true>::TKey& key) const {
+struct THash<NYdb::NPQTopic::TPartitionStreamImpl<true>::TKey> {
+    size_t operator()(const NYdb::NPQTopic::TPartitionStreamImpl<true>::TKey& key) const {
         THash<TString> strHash;
         const size_t h1 = strHash(key.Topic);
         const size_t h2 = strHash(key.Cluster);
@@ -942,14 +942,14 @@ struct THash<NYdb::NPersQueue::TPartitionStreamImpl<true>::TKey> {
     }
 };
 
-namespace NYdb::NPersQueue {
+namespace NYdb::NPQTopic {
 
 // Read session for single cluster.
 // This class holds only read session logic.
 // It is parametrized with output queue for client events
 // and connection factory interface to separate logic from transport.
 template <bool UseMigrationProtocol>
-class TSingleClusterReadSessionImpl : public NPersQueue::TEnableSelfContext<TSingleClusterReadSessionImpl<UseMigrationProtocol>>,
+class TSingleClusterReadSessionImpl : public NPQTopic::TEnableSelfContext<TSingleClusterReadSessionImpl<UseMigrationProtocol>>,
                                       public IUserRetrievedEventCallback<UseMigrationProtocol> {
 public:
     using TSelf = TSingleClusterReadSessionImpl<UseMigrationProtocol>;
@@ -1347,7 +1347,7 @@ private:
     std::shared_ptr<TCallbackContext<TCountersLogger<true>>> DumpCountersContext;
 };
 
-} // namespace NYdb::NPersQueue
+} // namespace NYdb::NPQTopic
 
 /////////////////////////////////////////
 // Templates implementation

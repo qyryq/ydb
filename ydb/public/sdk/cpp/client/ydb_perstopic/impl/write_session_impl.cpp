@@ -9,7 +9,7 @@
 #include <util/stream/buffer.h>
 
 
-namespace NYdb::NPersQueue {
+namespace NYdb::NPQTopic {
 using ::NMonitoring::TDynamicCounterPtr;
 using TCounterPtr = ::NMonitoring::TDynamicCounters::TCounterPtr;
 
@@ -1408,4 +1408,4 @@ TWriteSessionImpl::~TWriteSessionImpl() {
     }
 }
 
-}; // namespace NYdb::NPersQueue
+}; // namespace NYdb::NPQTopic

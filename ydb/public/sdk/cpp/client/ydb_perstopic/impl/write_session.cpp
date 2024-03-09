@@ -10,7 +10,7 @@
 #include <util/stream/buffer.h>
 
 
-namespace NYdb::NPersQueue {
+namespace NYdb::NPQTopic {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // TWriteSession
@@ -151,4 +151,4 @@ bool TSimpleBlockingWriteSession::Close(TDuration closeTimeout) {
     return Writer->Close(std::move(closeTimeout));
 }
 
-}; // namespace NYdb::NPersQueue
+}; // namespace NYdb::NPQTopic

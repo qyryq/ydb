@@ -2,7 +2,7 @@
 
 #include <ydb/public/sdk/cpp/client/ydb_perstopic/persqueue.h>
 
-namespace NYdb::NPersQueue {
+namespace NYdb::NPQTopic {
 
 TReadSessionEvent::TDataReceivedEvent::TMessageInformation::TMessageInformation(
     ui64 offset,
@@ -239,4 +239,4 @@ void TReadSessionEvent::TDataReceivedEvent::TCompressedMessage::Commit() {
     );
 }
 
-} // namespace NYdb::NPersQueue
+} // namespace NYdb::NPQTopic

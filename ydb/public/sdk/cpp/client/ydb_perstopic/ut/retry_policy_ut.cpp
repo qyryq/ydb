@@ -7,9 +7,9 @@
 using namespace NThreading;
 using namespace NKikimr;
 using namespace NKikimr::NPersQueueTests;
-using namespace NPersQueue;
+using namespace NPQTopic;
 
-namespace NYdb::NPersQueue::NTests {
+namespace NYdb::NPQTopic::NTests {
 
 Y_UNIT_TEST_SUITE(RetryPolicy) {
     Y_UNIT_TEST(TWriteSession_TestPolicy) {
@@ -387,7 +387,7 @@ Y_UNIT_TEST_SUITE(RetryPolicy) {
         auto& client = setup->GetPersQueueClient();
         auto writer = client.CreateWriteSession(settings);
         auto event = *writer->GetEvent(true);
-        Cerr << NYdb::NPersQueue::DebugString(event) << "\n";
+        Cerr << NYdb::NPQTopic::DebugString(event) << "\n";
         UNIT_ASSERT(std::holds_alternative<TWriteSessionEvent::TReadyToAcceptEvent>(event));
         auto continueToken = std::move(std::get<TWriteSessionEvent::TReadyToAcceptEvent>(event).ContinuationToken);
         TString message = "1234567890";
@@ -398,7 +398,7 @@ Y_UNIT_TEST_SUITE(RetryPolicy) {
         retryPolicy->WaitForRetriesSync(3);
         while (seqNo < 10) {
             auto event = *writer->GetEvent(true);
-            Cerr << NYdb::NPersQueue::DebugString(event) << "\n";
+            Cerr << NYdb::NPQTopic::DebugString(event) << "\n";
             UNIT_ASSERT(std::holds_alternative<TWriteSessionEvent::TReadyToAcceptEvent>(event));
             writer->Write(
                     std::move(std::get<TWriteSessionEvent::TReadyToAcceptEvent>(event).ContinuationToken),
@@ -411,4 +411,4 @@ Y_UNIT_TEST_SUITE(RetryPolicy) {
         WaitMessagesAcked(writer, 1, seqNo);
     }
 };
-}; //NYdb::NPersQueue::NTests
+}; //NYdb::NPQTopic::NTests

@@ -1,6 +1,6 @@
 #include "ut_utils.h"
 
-namespace NYdb::NPersQueue::NTests {
+namespace NYdb::NPQTopic::NTests {
 
 void WaitMessagesAcked(std::shared_ptr<IWriteSession> writer, ui64 startSeqNo, ui64 endSeqNo) {
     THashSet<ui64> ackedSeqNo;

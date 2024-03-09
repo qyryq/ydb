@@ -2,7 +2,7 @@
 #include "read_session.h"
 #include "write_session.h"
 
-namespace NYdb::NPersQueue {
+namespace NYdb::NPQTopic {
 
 std::shared_ptr<IReadSession> TPersQueueClient::TImpl::CreateReadSession(const TReadSessionSettings& settings) {
     TMaybe<TReadSessionSettings> maybeSettings;
@@ -86,4 +86,4 @@ std::shared_ptr<TPersQueueClient::TImpl::IWriteSessionConnectionProcessorFactory
     return CreateConnectionProcessorFactory<TService, TRequest, TResponse>(&TService::Stub::AsyncStreamingWrite, Connections_, DbDriverState_);
 }
 
-} // namespace NYdb::NPersQueue
+} // namespace NYdb::NPQTopic

@@ -1,6 +1,6 @@
 #include <ydb/public/sdk/cpp/client/ydb_perstopic/ut/ut_utils/ut_utils.h>
 
-namespace NYdb::NPersQueue::NTests {
+namespace NYdb::NPQTopic::NTests {
 
 Y_UNIT_TEST_SUITE(CompressExecutor) {
     Y_UNIT_TEST(TestReorderedExecutor) {

@@ -2,7 +2,7 @@
 
 #include <util/charset/unidata.h>
 
-namespace NYdb::NPersQueue {
+namespace NYdb::NPQTopic {
 
 ERetryErrorClass GetRetryErrorClass(EStatus status) {
     switch (status) {

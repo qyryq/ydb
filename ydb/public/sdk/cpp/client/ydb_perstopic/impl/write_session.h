@@ -10,7 +10,7 @@
 #include <util/generic/buffer.h>
 
 
-namespace NYdb::NPersQueue {
+namespace NYdb::NPQTopic {
 
 
 namespace NTests {
@@ -100,4 +100,4 @@ private:
 };
 
 
-}; // namespace NYdb::NPersQueue
+}; // namespace NYdb::NPQTopic

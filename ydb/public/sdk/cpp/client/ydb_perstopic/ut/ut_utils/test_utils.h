@@ -7,10 +7,10 @@
 
 #include "sdk_test_setup.h"
 
-namespace NPersQueue {
+namespace NPQTopic {
 
 using namespace NThreading;
-using namespace NYdb::NPersQueue;
+using namespace NYdb::NPQTopic;
 using namespace NKikimr;
 using namespace NKikimr::NPersQueueTests;
 
@@ -71,4 +71,4 @@ public:
 
 };
 
-} // namespace NPersQueue
+} // namespace NPQTopic

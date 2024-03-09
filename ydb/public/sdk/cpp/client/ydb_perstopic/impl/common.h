@@ -9,7 +9,7 @@
 
 #include <queue>
 
-namespace NYdb::NPersQueue {
+namespace NYdb::NPQTopic {
 
 ERetryErrorClass GetRetryErrorClass(EStatus status);
 ERetryErrorClass GetRetryErrorClassV2(EStatus status);
@@ -22,7 +22,7 @@ TString IssuesSingleLineString(const NYql::TIssues& issues);
 
 template <typename TReadSessionEvent>
 size_t CalcDataSize(const typename TReadSessionEvent::TEvent& event) {
-    constexpr bool UseMigrationProtocol = std::is_same_v<TReadSessionEvent, NPersQueue::TReadSessionEvent>;
+    constexpr bool UseMigrationProtocol = std::is_same_v<TReadSessionEvent, NPQTopic::TReadSessionEvent>;
 
     if (const typename TReadSessionEvent::TDataReceivedEvent* dataEvent =
             std::get_if<typename TReadSessionEvent::TDataReceivedEvent>(&event)) {
@@ -494,4 +494,4 @@ public:
 
 IExecutor::TPtr CreateGenericExecutor();
 
-} // namespace NYdb::NPersQueue
+} // namespace NYdb::NPQTopic

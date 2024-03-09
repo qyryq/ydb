@@ -9,7 +9,7 @@
 #include <ydb/public/api/grpc/draft/ydb_persqueue_v1.grpc.pb.h>
 #include <ydb/public/sdk/cpp/client/ydb_perstopic/persqueue.h>
 
-namespace NYdb::NPersQueue {
+namespace NYdb::NPQTopic {
 
 class TPersQueueClient::TImpl : public TClientImplCommon<TPersQueueClient::TImpl> {
 public:
@@ -243,4 +243,4 @@ private:
     THashMap<TString, std::shared_ptr<TImpl>> Subclients; // Endpoint -> Subclient.
 };
 
-} // namespace NYdb::NPersQueue
+} // namespace NYdb::NPQTopic

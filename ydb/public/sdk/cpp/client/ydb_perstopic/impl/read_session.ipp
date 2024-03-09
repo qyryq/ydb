@@ -31,11 +31,7 @@ namespace NYdb::NTopic {
     class TReadSession;
 }
 
-namespace NYdb::NPersQueue::NCompressionDetails {
-    extern TString Decompress(const Ydb::PersQueue::V1::MigrationStreamingReadServerMessage::DataBatch::MessageData& data);
-}
-
-namespace NYdb::NPersQueue {
+namespace NYdb::NPQTopic {
 
 static const bool RangesMode = !GetEnv("PQ_OFFSET_RANGES_MODE").empty();
 
@@ -651,7 +647,7 @@ void TSingleClusterReadSessionImpl<UseMigrationProtocol>::ConfirmPartitionStream
 
         using TClosedEvent = std::conditional_t<
             UseMigrationProtocol,
-                NPersQueue::TReadSessionEvent::TPartitionStreamClosedEvent,
+                NPQTopic::TReadSessionEvent::TPartitionStreamClosedEvent,
                 NTopic::TReadSessionEvent::TPartitionSessionClosedEvent
         >;
 
@@ -1472,7 +1468,7 @@ void TSingleClusterReadSessionImpl<UseMigrationProtocol>::DestroyAllPartitionStr
 
     using TClosedEvent = std::conditional_t<
         UseMigrationProtocol,
-            NPersQueue::TReadSessionEvent::TPartitionStreamClosedEvent,
+            NPQTopic::TReadSessionEvent::TPartitionStreamClosedEvent,
             NTopic::TReadSessionEvent::TPartitionSessionClosedEvent
     >;
 
@@ -1860,7 +1856,7 @@ bool TReadSessionEventsQueue<UseMigrationProtocol>::PushEvent(TIntrusivePtr<TPar
         //TODO: check session closed event and return false
         using TClosedEvent = std::conditional_t<
             UseMigrationProtocol,
-                NPersQueue::TReadSessionEvent::TPartitionStreamClosedEvent,
+                NPQTopic::TReadSessionEvent::TPartitionStreamClosedEvent,
                 NTopic::TReadSessionEvent::TPartitionSessionClosedEvent
         >;
 
@@ -2838,4 +2834,4 @@ bool HasNullCounters(TReaderCounters& counters) {
         || !counters.CompressedBytesInflightUsageByTime;
 }
 
-} // namespace NYdb::NPersQueue
+} // namespace NYdb::NPQTopic

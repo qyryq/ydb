@@ -16,9 +16,9 @@
 using namespace NThreading;
 using namespace NKikimr;
 using namespace NKikimr::NPersQueueTests;
-using namespace NPersQueue;
+using namespace NPQTopic;
 
-namespace NYdb::NPersQueue::NTests {
+namespace NYdb::NPQTopic::NTests {
 // This suite tests basic Logbroker usage scenario: write and read a bunch of messages
 Y_UNIT_TEST_SUITE(BasicUsage) {
     template<typename TResponse>
@@ -133,7 +133,7 @@ Y_UNIT_TEST_SUITE(BasicUsage) {
             TPersQueueYdbSdkTestSetup* setup, TWriteSessionSettings& writeSettings, ui64 count,
             TMaybe<bool> shouldCaptureData = Nothing()
     ) {
-        std::shared_ptr<NYdb::NPersQueue::IReadSession> readSession;
+        std::shared_ptr<NYdb::NPQTopic::IReadSession> readSession;
 
         auto& client = setup->GetPersQueueClient();
         auto session = client.CreateSimpleBlockingWriteSession(writeSettings);
@@ -160,7 +160,7 @@ Y_UNIT_TEST_SUITE(BasicUsage) {
         auto readSettings = setup->GetReadSessionSettings();
         NThreading::TPromise<void> checkedPromise = NThreading::NewPromise<void>();
         auto totalReceived = 0u;
-        readSettings.EventHandlers_.SimpleDataHandlers([&](NYdb::NPersQueue::TReadSessionEvent::TDataReceivedEvent& ev) {
+        readSettings.EventHandlers_.SimpleDataHandlers([&](NYdb::NPQTopic::TReadSessionEvent::TDataReceivedEvent& ev) {
             auto& messages = ev.GetMessages();
             for (size_t i = 0u; i < messages.size(); ++i) {
                 auto& message = messages[i];
@@ -176,7 +176,7 @@ Y_UNIT_TEST_SUITE(BasicUsage) {
     }
 
     Y_UNIT_TEST(MaxByteSizeEqualZero) {
-        auto setup = std::make_shared<NPersQueue::NTests::TPersQueueYdbSdkTestSetup>(TEST_CASE_NAME);
+        auto setup = std::make_shared<NPQTopic::NTests::TPersQueueYdbSdkTestSetup>(TEST_CASE_NAME);
         TPersQueueClient client(setup->GetDriver());
 
         auto writeSettings = TWriteSessionSettings()
@@ -512,4 +512,4 @@ Y_UNIT_TEST_SUITE(BasicUsage) {
 
     }
 }
-} // namespace NYdb::NPersQueue::NTests
+} // namespace NYdb::NPQTopic::NTests

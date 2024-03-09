@@ -8,16 +8,16 @@
 using namespace NKikimr;
 using namespace NKikimr::NPersQueueTests;
 
-namespace NYdb::NPersQueue::NTests {
+namespace NYdb::NPQTopic::NTests {
 
-class TPersQueueYdbSdkTestSetup : public ::NPersQueue::SDKTestSetup {
+class TPersQueueYdbSdkTestSetup : public ::NPQTopic::SDKTestSetup {
     THolder<NYdb::TDriver> Driver;
-    THolder<NYdb::NPersQueue::TPersQueueClient> PersQueueClient;
+    THolder<NYdb::NPQTopic::TPersQueueClient> PersQueueClient;
 
     TAdaptiveLock Lock;
 public:
     TPersQueueYdbSdkTestSetup(const TString& testCaseName, bool start = true,
-                              const TVector<NKikimrServices::EServiceKikimr>& logServices = ::NPersQueue::TTestServer::LOGGED_SERVICES,
+                              const TVector<NKikimrServices::EServiceKikimr>& logServices = ::NPQTopic::TTestServer::LOGGED_SERVICES,
                               NActors::NLog::EPriority logPriority = NActors::NLog::PRI_DEBUG,
                               ui32 nodeCount = NKikimr::NPersQueueTests::PQ_DEFAULT_NODE_COUNT,
                               size_t topicPartitionsCount = 1)
@@ -47,24 +47,24 @@ public:
         return *Driver;
     }
 
-    NYdb::NPersQueue::TPersQueueClient& GetPersQueueClient() {
+    NYdb::NPQTopic::TPersQueueClient& GetPersQueueClient() {
         with_lock(Lock) {
             if (!PersQueueClient) {
-                PersQueueClient = MakeHolder<NYdb::NPersQueue::TPersQueueClient>(GetDriver());
+                PersQueueClient = MakeHolder<NYdb::NPQTopic::TPersQueueClient>(GetDriver());
             }
             return *PersQueueClient;
         }
     }
 
-    NYdb::NPersQueue::TReadSessionSettings GetReadSessionSettings() {
-        NYdb::NPersQueue::TReadSessionSettings settings;
+    NYdb::NPQTopic::TReadSessionSettings GetReadSessionSettings() {
+        NYdb::NPQTopic::TReadSessionSettings settings;
         settings
                 .ConsumerName(GetTestConsumer())
                 .AppendTopics(GetTestTopic());
         return settings;
     }
 
-    NYdb::NPersQueue::TWriteSessionSettings GetWriteSessionSettings() {
+    NYdb::NPQTopic::TWriteSessionSettings GetWriteSessionSettings() {
         TWriteSessionSettings settings;
         settings
                 .Path(GetTestTopic())
@@ -74,7 +74,7 @@ public:
     }
 };
 
-struct TYDBClientEventLoop : public ::NPersQueue::IClientEventLoop {
+struct TYDBClientEventLoop : public ::NPQTopic::IClientEventLoop {
 public:
     std::shared_ptr<TPersQueueYdbSdkTestSetup> Setup;
     using TAcksCallback = std::function<void (const TVector<ui64>&)>;
@@ -108,8 +108,8 @@ public:
 
             TMaybe<TContinuationToken> continueToken;
             NThreading::TFuture<void> waitEventFuture = writer->WaitEvent();
-            THashMap<ui64, NThreading::TPromise<::NPersQueue::TWriteResult>> ackPromiseBySequenceNumber;
-            TDeque<NThreading::TPromise<::NPersQueue::TWriteResult>> ackPromiseQueue;
+            THashMap<ui64, NThreading::TPromise<::NPQTopic::TWriteResult>> ackPromiseBySequenceNumber;
+            TDeque<NThreading::TPromise<::NPQTopic::TWriteResult>> ackPromiseQueue;
             while (!MustStop) {
                 if (!continueToken) {
                     Log << TLOG_INFO << "Wait for writer event";
@@ -154,7 +154,7 @@ public:
                 }
 
                 if (continueToken && !MessageBuffer.IsEmpty()) {
-                    ::NPersQueue::TAcknowledgableMessage acknowledgeableMessage;
+                    ::NPQTopic::TAcknowledgableMessage acknowledgeableMessage;
                     Y_ABORT_UNLESS(MessageBuffer.Dequeue(acknowledgeableMessage));
                     if (AutoSeqNo) {
                         ackPromiseQueue.emplace_back(acknowledgeableMessage.AckPromise);
@@ -191,7 +191,7 @@ private:
     bool AutoSeqNo;
 };
 
-struct TYdbPqTestRetryState : NYdb::NPersQueue::IRetryPolicy::IRetryState {
+struct TYdbPqTestRetryState : NYdb::NPQTopic::IRetryPolicy::IRetryState {
     TYdbPqTestRetryState(
             std::function<void ()> retryCallback, std::function<void ()> destroyCallback, const TDuration& delay
     )
@@ -213,7 +213,7 @@ struct TYdbPqTestRetryState : NYdb::NPersQueue::IRetryPolicy::IRetryState {
         DestroyDone();
     }
 };
-struct TYdbPqNoRetryState : NYdb::NPersQueue::IRetryPolicy::IRetryState {
+struct TYdbPqNoRetryState : NYdb::NPQTopic::IRetryPolicy::IRetryState {
     TAtomic DelayCalled = 0;
     TMaybe<TDuration> GetNextRetryDelay(NYdb::EStatus) override {
         auto res = AtomicSwap(&DelayCalled, 0);
@@ -426,12 +426,12 @@ public:
                                                           autoSeqNo);
     }
 
-    NThreading::TFuture<::NPersQueue::TWriteResult> Write(bool doWait = false, const TString& message = TString()) {
+    NThreading::TFuture<::NPQTopic::TWriteResult> Write(bool doWait = false, const TString& message = TString()) {
         //auto f = ClientWrite(Message, SeqNo, TInstant::Now());
-        auto promise = NThreading::NewPromise<::NPersQueue::TWriteResult>();
+        auto promise = NThreading::NewPromise<::NPQTopic::TWriteResult>();
         auto log = Setup->GetLog();
         log << TLOG_INFO << "Enqueue message with sequence number " << SeqNo;
-        EventLoop->MessageBuffer.Enqueue(::NPersQueue::TAcknowledgableMessage{
+        EventLoop->MessageBuffer.Enqueue(::NPQTopic::TAcknowledgableMessage{
                 message.Empty() ? Message : message,
                 SeqNo, TInstant::Now(), promise
         });
@@ -461,4 +461,4 @@ private:
 
 
 void WaitMessagesAcked(std::shared_ptr<IWriteSession> writer, ui64 startSeqNo, ui64 endSeqNo);
-} // namespace NYdb::NPersQueue::NTests
+} // namespace NYdb::NPQTopic::NTests

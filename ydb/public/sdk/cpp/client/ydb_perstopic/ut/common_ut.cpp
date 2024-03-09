@@ -2,7 +2,7 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
-using NYdb::NPersQueue::ApplyClusterEndpoint;
+using NYdb::NPQTopic::ApplyClusterEndpoint;
 
 Y_UNIT_TEST_SUITE(ApplyClusterEndpointTest) {
     Y_UNIT_TEST(NoPorts) {

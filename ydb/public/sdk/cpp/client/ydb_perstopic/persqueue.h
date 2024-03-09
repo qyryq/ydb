@@ -23,7 +23,7 @@ namespace NYdb {
     class TProtoAccessor;
 }
 
-namespace NYdb::NPersQueue {
+namespace NYdb::NPQTopic {
 
 enum class EFormat {
     BASE = 1,
@@ -1107,7 +1107,7 @@ struct TWriteSessionSettings : public TRequestSettings<TWriteSessionSettings> {
         return *this;
     };
 
-    NYdb::NPersQueue::TWriteSessionMeta Meta_;
+    NYdb::NPQTopic::TWriteSessionMeta Meta_;
 
     //! Writer will accumulate messages until reaching up to BatchFlushSize bytes
     //! but for no longer than BatchFlushInterval.
@@ -1536,4 +1536,4 @@ private:
     std::shared_ptr<TImpl> Impl_;
 };
 
-} // namespace NYdb::NPersQueue
+} // namespace NYdb::NPQTopic

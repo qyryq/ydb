@@ -9,7 +9,7 @@
 
 #include <util/system/tempfile.h>
 
-namespace NPersQueue {
+namespace NPQTopic {
 
 static constexpr int DEBUG_LOG_LEVEL = 7;
 
@@ -168,4 +168,4 @@ public:
     static const TVector<NKikimrServices::EServiceKikimr> LOGGED_SERVICES;
 };
 
-} // namespace NPersQueue
+} // namespace NPQTopic

@@ -8,7 +8,7 @@
 #include <shared_mutex>
 #include <vector>
 
-namespace NYdb::NPersQueue {
+namespace NYdb::NPQTopic {
 
 template<typename T>
 class TContextOwner;

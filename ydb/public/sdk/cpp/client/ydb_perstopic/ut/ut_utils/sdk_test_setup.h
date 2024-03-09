@@ -6,7 +6,7 @@
 
 #define TEST_CASE_NAME (this->Name_)
 
-namespace NPersQueue {
+namespace NPQTopic {
 
 class SDKTestSetup {
 protected:
@@ -157,10 +157,10 @@ public:
 
     void WriteToTopic(const TVector<TString>& data, bool compress = true) {
 
-        auto client = NYdb::NPersQueue::TPersQueueClient(*(Server.AnnoyingClient->GetDriver()));
-        NYdb::NPersQueue::TWriteSessionSettings settings;
+        auto client = NYdb::NPQTopic::TPersQueueClient(*(Server.AnnoyingClient->GetDriver()));
+        NYdb::NPQTopic::TWriteSessionSettings settings;
         settings.Path(GetTestTopic()).MessageGroupId(GetTestMessageGroupId());
-        if (!compress) settings.Codec(NYdb::NPersQueue::ECodec::RAW);
+        if (!compress) settings.Codec(NYdb::NPQTopic::ECodec::RAW);
         auto writer = client.CreateSimpleBlockingWriteSession(settings);
 
         for (const TString& d : data) {
@@ -232,7 +232,7 @@ public:
     }
 
     void CreateTopic(const TString& topic, const TString& cluster, size_t partitionsCount = 1) {
-        Server.AnnoyingClient->CreateTopic(BuildFullTopicName(topic, cluster), partitionsCount);
+        Server.AnnoyingClient->CreateTopic(::NPersQueue::BuildFullTopicName(topic, cluster), partitionsCount);
     }
 };
 }

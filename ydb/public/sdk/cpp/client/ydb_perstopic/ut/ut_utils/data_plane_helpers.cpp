@@ -2,11 +2,11 @@
 
 namespace NKikimr::NPersQueueTests {
 
-    using namespace NYdb::NPersQueue;
+    using namespace NYdb::NPQTopic;
 
-    std::shared_ptr<NYdb::NPersQueue::IWriteSession> CreateWriter(
+    std::shared_ptr<NYdb::NPQTopic::IWriteSession> CreateWriter(
         NYdb::TDriver& driver,
-        const NYdb::NPersQueue::TWriteSessionSettings& settings,
+        const NYdb::NPQTopic::TWriteSessionSettings& settings,
         std::shared_ptr<NYdb::ICredentialsProviderFactory> creds
     ) {
         TPersQueueClientSettings clientSettings;
@@ -14,7 +14,7 @@ namespace NKikimr::NPersQueueTests {
         return TPersQueueClient(driver, clientSettings).CreateWriteSession(TWriteSessionSettings(settings).ClusterDiscoveryMode(EClusterDiscoveryMode::Off));
     }
 
-    std::shared_ptr<NYdb::NPersQueue::IWriteSession> CreateWriter(
+    std::shared_ptr<NYdb::NPQTopic::IWriteSession> CreateWriter(
         NYdb::TDriver& driver,
         const TString& topic,
         const TString& sourceId,
@@ -25,7 +25,7 @@ namespace NKikimr::NPersQueueTests {
     ) {
         auto settings = TWriteSessionSettings().Path(topic).MessageGroupId(sourceId);
         if (partitionGroup) settings.PartitionGroupId(*partitionGroup);
-        settings.RetryPolicy((reconnectOnFailure && *reconnectOnFailure) ? NYdb::NPersQueue::IRetryPolicy::GetDefaultPolicy() : NYdb::NPersQueue::IRetryPolicy::GetNoRetryPolicy());
+        settings.RetryPolicy((reconnectOnFailure && *reconnectOnFailure) ? NYdb::NPQTopic::IRetryPolicy::GetDefaultPolicy() : NYdb::NPQTopic::IRetryPolicy::GetNoRetryPolicy());
         if (codec) {
             if (*codec == "raw")
                 settings.Codec(ECodec::RAW);
@@ -37,14 +37,14 @@ namespace NKikimr::NPersQueueTests {
         return CreateWriter(driver, settings, creds);
     }
 
-    std::shared_ptr<NYdb::NPersQueue::ISimpleBlockingWriteSession> CreateSimpleWriter(
+    std::shared_ptr<NYdb::NPQTopic::ISimpleBlockingWriteSession> CreateSimpleWriter(
         NYdb::TDriver& driver,
-        const NYdb::NPersQueue::TWriteSessionSettings& settings
+        const NYdb::NPQTopic::TWriteSessionSettings& settings
     ) {
         return TPersQueueClient(driver).CreateSimpleBlockingWriteSession(TWriteSessionSettings(settings).ClusterDiscoveryMode(EClusterDiscoveryMode::Off));
     }
 
-    std::shared_ptr<NYdb::NPersQueue::ISimpleBlockingWriteSession> CreateSimpleWriter(
+    std::shared_ptr<NYdb::NPQTopic::ISimpleBlockingWriteSession> CreateSimpleWriter(
         NYdb::TDriver& driver,
         const TString& topic,
         const TString& sourceId,
@@ -55,7 +55,7 @@ namespace NKikimr::NPersQueueTests {
     ) {
         auto settings = TWriteSessionSettings().Path(topic).MessageGroupId(sourceId);
         if (partitionGroup) settings.PartitionGroupId(*partitionGroup);
-        settings.RetryPolicy((reconnectOnFailure && *reconnectOnFailure) ? NYdb::NPersQueue::IRetryPolicy::GetDefaultPolicy() : NYdb::NPersQueue::IRetryPolicy::GetNoRetryPolicy());
+        settings.RetryPolicy((reconnectOnFailure && *reconnectOnFailure) ? NYdb::NPQTopic::IRetryPolicy::GetDefaultPolicy() : NYdb::NPQTopic::IRetryPolicy::GetNoRetryPolicy());
         if (codec) {
             if (*codec == "raw")
                 settings.Codec(ECodec::RAW);
@@ -69,9 +69,9 @@ namespace NKikimr::NPersQueueTests {
         return CreateSimpleWriter(driver, settings);
     }
 
-    std::shared_ptr<NYdb::NPersQueue::IReadSession> CreateReader(
+    std::shared_ptr<NYdb::NPQTopic::IReadSession> CreateReader(
         NYdb::TDriver& driver,
-        const NYdb::NPersQueue::TReadSessionSettings& settings,
+        const NYdb::NPQTopic::TReadSessionSettings& settings,
         std::shared_ptr<NYdb::ICredentialsProviderFactory> creds
     ) {
         TPersQueueClientSettings clientSettings;
@@ -84,16 +84,16 @@ namespace NKikimr::NPersQueueTests {
             auto future = reader->WaitEvent();
             future.Wait(timeout);
 
-            TMaybe<NYdb::NPersQueue::TReadSessionEvent::TEvent> event = reader->GetEvent(false, 1);
+            TMaybe<NYdb::NPQTopic::TReadSessionEvent::TEvent> event = reader->GetEvent(false, 1);
             if (!event)
                 return {};
-            if (auto dataEvent = std::get_if<NYdb::NPersQueue::TReadSessionEvent::TDataReceivedEvent>(&*event)) {
+            if (auto dataEvent = std::get_if<NYdb::NPQTopic::TReadSessionEvent::TDataReceivedEvent>(&*event)) {
                 return *dataEvent;
-            } else if (auto* createPartitionStreamEvent = std::get_if<NYdb::NPersQueue::TReadSessionEvent::TCreatePartitionStreamEvent>(&*event)) {
+            } else if (auto* createPartitionStreamEvent = std::get_if<NYdb::NPQTopic::TReadSessionEvent::TCreatePartitionStreamEvent>(&*event)) {
                 createPartitionStreamEvent->Confirm();
-            } else if (auto* destroyPartitionStreamEvent = std::get_if<NYdb::NPersQueue::TReadSessionEvent::TDestroyPartitionStreamEvent>(&*event)) {
+            } else if (auto* destroyPartitionStreamEvent = std::get_if<NYdb::NPQTopic::TReadSessionEvent::TDestroyPartitionStreamEvent>(&*event)) {
                 destroyPartitionStreamEvent->Confirm();
-            } else if (auto* closeSessionEvent = std::get_if<NYdb::NPersQueue::TSessionClosedEvent>(&*event)) {
+            } else if (auto* closeSessionEvent = std::get_if<NYdb::NPQTopic::TSessionClosedEvent>(&*event)) {
                 return {};
             }
         }

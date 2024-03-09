@@ -6,13 +6,13 @@
 
 namespace NKikimr::NPersQueueTests {
 
-    std::shared_ptr<NYdb::NPersQueue::IWriteSession> CreateWriter(
+    std::shared_ptr<NYdb::NPQTopic::IWriteSession> CreateWriter(
         NYdb::TDriver& driver,
-        const NYdb::NPersQueue::TWriteSessionSettings& settings,
+        const NYdb::NPQTopic::TWriteSessionSettings& settings,
         std::shared_ptr<NYdb::ICredentialsProviderFactory> creds = nullptr
     );
 
-    std::shared_ptr<NYdb::NPersQueue::IWriteSession> CreateWriter(
+    std::shared_ptr<NYdb::NPQTopic::IWriteSession> CreateWriter(
         NYdb::TDriver& driver,
         const TString& topic,
         const TString& sourceId,
@@ -22,12 +22,12 @@ namespace NKikimr::NPersQueueTests {
         std::shared_ptr<NYdb::ICredentialsProviderFactory> creds = nullptr
     );
 
-    std::shared_ptr<NYdb::NPersQueue::ISimpleBlockingWriteSession> CreateSimpleWriter(
+    std::shared_ptr<NYdb::NPQTopic::ISimpleBlockingWriteSession> CreateSimpleWriter(
         NYdb::TDriver& driver,
-        const NYdb::NPersQueue::TWriteSessionSettings& settings
+        const NYdb::NPQTopic::TWriteSessionSettings& settings
     );
 
-    std::shared_ptr<NYdb::NPersQueue::ISimpleBlockingWriteSession> CreateSimpleWriter(
+    std::shared_ptr<NYdb::NPQTopic::ISimpleBlockingWriteSession> CreateSimpleWriter(
         NYdb::TDriver& driver,
         const TString& topic,
         const TString& sourceId,
@@ -37,13 +37,13 @@ namespace NKikimr::NPersQueueTests {
         THashMap<TString, TString> sessionMeta = {}
     );
 
-    std::shared_ptr<NYdb::NPersQueue::IReadSession> CreateReader(
+    std::shared_ptr<NYdb::NPQTopic::IReadSession> CreateReader(
         NYdb::TDriver& driver,
-        const NYdb::NPersQueue::TReadSessionSettings& settings,
+        const NYdb::NPQTopic::TReadSessionSettings& settings,
         std::shared_ptr<NYdb::ICredentialsProviderFactory> creds = nullptr
 
     );
 
-    TMaybe<NYdb::NPersQueue::TReadSessionEvent::TDataReceivedEvent> GetNextMessageSkipAssignment(std::shared_ptr<NYdb::NPersQueue::IReadSession>& reader, TDuration timeout = TDuration::Max());
+    TMaybe<NYdb::NPQTopic::TReadSessionEvent::TDataReceivedEvent> GetNextMessageSkipAssignment(std::shared_ptr<NYdb::NPQTopic::IReadSession>& reader, TDuration timeout = TDuration::Max());
 
 }
