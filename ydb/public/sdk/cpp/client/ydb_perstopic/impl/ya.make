@@ -22,6 +22,8 @@ PEERDIR(
     ydb/public/sdk/cpp/client/impl/ydb_internal/make_request
     ydb/public/sdk/cpp/client/ydb_common_client/impl
     ydb/public/sdk/cpp/client/ydb_driver
+    ydb/public/sdk/cpp/client/ydb_federated_topic
+    ydb/public/sdk/cpp/client/ydb_federated_topic/impl
     ydb/public/api/grpc/draft
 )
 

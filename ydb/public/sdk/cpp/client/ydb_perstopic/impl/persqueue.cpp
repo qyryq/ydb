@@ -140,7 +140,8 @@ TDescribeTopicResult::TTopicSettings::TRemoteMirrorRule::TRemoteMirrorRule(const
 }
 
 TPersQueueClient::TPersQueueClient(const TDriver& driver, const TPersQueueClientSettings& settings)
-    : Impl_(std::make_shared<TImpl>(CreateInternalInterface(driver), settings))
+    // : Impl_(std::make_shared<TImpl>(CreateInternalInterface(driver), settings))
+    : Impl_(std::make_shared<TImpl>(driver, settings))
 {
     ProvideCodec(ECodec::GZIP, MakeHolder<NTopic::TGzipCodec>());
     ProvideCodec(ECodec::LZOP, MakeHolder<NTopic::TUnsupportedCodec>());

@@ -8,17 +8,32 @@
 
 #include <ydb/public/api/grpc/draft/ydb_persqueue_v1.grpc.pb.h>
 #include <ydb/public/sdk/cpp/client/ydb_perstopic/persqueue.h>
+#include <ydb/public/sdk/cpp/client/ydb_federated_topic/federated_topic.h>
 
 namespace NYdb::NPQTopic {
 
+NFederatedTopic::TFederatedTopicClientSettings ConvertToFederatedTopicClientSettings(const TPersQueueClientSettings &pqSettings);
+
 class TPersQueueClient::TImpl : public TClientImplCommon<TPersQueueClient::TImpl> {
 public:
+    // // Constructor for main client.
+    // TImpl(std::shared_ptr<TGRpcConnectionsImpl> connections, const TPersQueueClientSettings& settings)
+    //     : TClientImplCommon(std::move(connections), settings)
+    //     , Settings(settings)
+    //     , FederatedTopicClientSettings(ConvertToFederatedTopicClientSettings(settings))
+    //     , FederatedTopicClient(std::make_shared<NFederatedTopic::TFederatedTopicClient>(Connections_, FederatedTopicClientSettings))
+    // {
+    // }
+
     // Constructor for main client.
-    TImpl(std::shared_ptr<TGRpcConnectionsImpl> connections, const TPersQueueClientSettings& settings)
-        : TClientImplCommon(std::move(connections), settings)
+    TImpl(const TDriver& driver, const TPersQueueClientSettings& settings)
+        : TClientImplCommon(CreateInternalInterface(driver), settings)
         , Settings(settings)
+        , FederatedTopicClientSettings(ConvertToFederatedTopicClientSettings(settings))
+        , FederatedTopicClient(std::make_shared<NFederatedTopic::TFederatedTopicClient>(driver, FederatedTopicClientSettings))
     {
     }
+
 
     // Constructor for subclients with endpoints discovered by cluster discovery.
     // Async discovery mode is used because this client is created inside SDK threads.
@@ -219,6 +234,8 @@ public:
     std::shared_ptr<ISimpleBlockingWriteSession> CreateSimpleWriteSession(const TWriteSessionSettings& settings);
     std::shared_ptr<IWriteSession> CreateWriteSession(const TWriteSessionSettings& settings);
 
+    std::shared_ptr<NFederatedTopic::TFederatedTopicClient> GetFederatedTopicClient();
+
     std::shared_ptr<TImpl> GetClientForEndpoint(const TString& clusterEndoint);
 
     using IReadSessionConnectionProcessorFactory = ISessionConnectionProcessorFactory<Ydb::PersQueue::V1::MigrationStreamingReadClientMessage, Ydb::PersQueue::V1::MigrationStreamingReadServerMessage>;
@@ -237,6 +254,8 @@ public:
 
 private:
     const TPersQueueClientSettings Settings;
+    const NFederatedTopic::TFederatedTopicClientSettings FederatedTopicClientSettings;
+    std::shared_ptr<NFederatedTopic::TFederatedTopicClient> FederatedTopicClient;
     const TString CustomEndpoint;
     TAdaptiveLock Lock;
     std::shared_ptr<std::unordered_map<ECodec, THolder<NTopic::ICodec>>> ProvidedCodecs = std::make_shared<std::unordered_map<ECodec, THolder<NTopic::ICodec>>>();

@@ -2,6 +2,7 @@
 
 #include "common.h"
 #include "persqueue_impl.h"
+#include "ydb/public/sdk/cpp/client/ydb_federated_topic/impl/federated_write_session.h"
 
 #include <ydb/public/sdk/cpp/client/ydb_perstopic/persqueue.h>
 #include <ydb/public/sdk/cpp/client/ydb_perstopic/impl/callback_context.h>
@@ -385,8 +386,18 @@ private:
     void UpdateTimedCountersImpl();
 
 private:
+
+    TWriteSessionEvent::TWriteAck ConvertAck(NTopic::TWriteSessionEvent::TWriteAck const& ack) const;
+    TWriteSessionEvent::TEvent ConvertEvent(NTopic::TWriteSessionEvent::TEvent& event);
+
+
+private:
     TWriteSessionSettings Settings;
+    NFederatedTopic::TFederatedWriteSessionSettings FederatedWriteSessionSettings;
     std::shared_ptr<TPersQueueClient::TImpl> Client;
+    std::shared_ptr<NFederatedTopic::TFederatedTopicClient> FederatedTopicClient;
+    std::shared_ptr<NTopic::IWriteSession> FederatedWriteSession;
+    TVector<NTopic::TContinuationToken> FederationContinuationTokens;
     std::shared_ptr<TGRpcConnectionsImpl> Connections;
     TString TargetCluster;
     TString InitialCluster;

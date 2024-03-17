@@ -1,3 +1,4 @@
+#include "util/generic/overloaded.h"
 #include "write_session.h"
 #include <ydb/public/sdk/cpp/client/ydb_perstopic/impl/log_lazy.h>
 
@@ -20,7 +21,7 @@ namespace NCompressionDetails {
     THolder<IOutputStream> CreateCoder(ECodec codec, TBuffer& result, int quality);
 }
 
-#define HISTOGRAM_SETUP NMonitoring::ExplicitHistogram({0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100})
+#define HISTOGRAM_SETUP ::NMonitoring::ExplicitHistogram({0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100})
 TWriterCounters::TWriterCounters(const TIntrusivePtr<::NMonitoring::TDynamicCounters>& counters) {
     Errors = counters->GetCounter("errors", true);
     CurrentSessionLifetimeMs = counters->GetCounter("currentSessionLifetimeMs", false);
@@ -38,6 +39,33 @@ TWriterCounters::TWriterCounters(const TIntrusivePtr<::NMonitoring::TDynamicCoun
 }
 #undef HISTOGRAM_SETUP
 
+NFederatedTopic::TFederatedWriteSessionSettings ConvertToFederatedWriteSessionSettings(TWriteSessionSettings const& pqSettings) {
+    NFederatedTopic::TFederatedWriteSessionSettings fedSettings;
+    fedSettings.Path(pqSettings.Path_);
+    fedSettings.ProducerId(pqSettings.MessageGroupId_);
+    fedSettings.MessageGroupId(pqSettings.MessageGroupId_);
+    // TODO(qyryq) fedSettings.Codec(pqSettings.Codec_);
+    fedSettings.CompressionLevel(pqSettings.CompressionLevel_);
+    fedSettings.MaxMemoryUsage(pqSettings.MaxMemoryUsage_);
+    fedSettings.MaxInflightCount(pqSettings.MaxInflightCount_);
+    fedSettings.RetryPolicy(pqSettings.RetryPolicy_);  // TODO(qyryq) Maybe convert?
+    fedSettings.BatchFlushInterval(pqSettings.BatchFlushInterval_);
+    fedSettings.BatchFlushSizeBytes(pqSettings.BatchFlushSizeBytes_);
+    fedSettings.ConnectTimeout(pqSettings.ConnectTimeout_);
+    // TODO(qyryq) fedSettings.Counters(pqSettings.Counters_);
+    // TODO(qyryq) fedSettings.CompressionExecutor(pqSettings.CompressionExecutor_);
+    // TODO(qyryq) fedSettings.EventHandlers(pqSettings.EventHandlers_);
+    fedSettings.ValidateSeqNo(pqSettings.ValidateSeqNo_);
+    if (pqSettings.PartitionGroupId_ && pqSettings.PartitionGroupId_ > 0) {
+        fedSettings.PartitionId(*pqSettings.PartitionGroupId_ - 1);
+    }
+    fedSettings.PreferredDatabase(pqSettings.PreferredCluster_);  // TODO(qyryq) Any conversions?
+    fedSettings.AllowFallback(pqSettings.AllowFallbackToOtherClusters_);
+    // TODO(qyryq) If ClusterDiscoveryMode == false, then as a topic.
+    fedSettings.DirectWriteToPartition(true);
+    return fedSettings;
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // TWriteSessionImpl
 
@@ -48,6 +76,7 @@ TWriteSessionImpl::TWriteSessionImpl(
          TDbDriverStatePtr dbDriverState)
     : Settings(settings)
     , Client(std::move(client))
+    , FederatedTopicClient(Client->GetFederatedTopicClient())
     , Connections(std::move(connections))
     , DbDriverState(std::move(dbDriverState))
     , PrevToken(DbDriverState->CredentialsProvider ? DbDriverState->CredentialsProvider->GetAuthInfo() : "")
@@ -62,6 +91,8 @@ TWriteSessionImpl::TWriteSessionImpl(
     if (!Settings.RetryPolicy_) {
         Settings.RetryPolicy_ = IRetryPolicy::GetDefaultPolicy();
     }
+
+    // TODO(qyryq) Safe to delete.
     if (Settings.PreferredCluster_ && !Settings.AllowFallbackToOtherClusters_) {
         TargetCluster = *Settings.PreferredCluster_;
         TargetCluster.to_lower();
@@ -72,9 +103,12 @@ TWriteSessionImpl::TWriteSessionImpl(
         Counters = MakeIntrusive<TWriterCounters>(new ::NMonitoring::TDynamicCounters());
     }
 
+    FederatedWriteSessionSettings = ConvertToFederatedWriteSessionSettings(Settings);
+    FederatedWriteSession = FederatedTopicClient->CreateWriteSession(FederatedWriteSessionSettings);
 }
 
 void TWriteSessionImpl::Start(const TDuration& delay) {
+    return;
     Y_ABORT_UNLESS(SelfContext);
 
     if (!EventsQueue) {
@@ -305,14 +339,45 @@ TString DebugString(const TWriteSessionEvent::TEvent& event) {
     return std::visit([](const auto& ev) { return ev.DebugString(); }, event);
 }
 
+TWriteSessionEvent::TEvent TWriteSessionImpl::ConvertEvent(NTopic::TWriteSessionEvent::TEvent& event) {
+    TWriteSessionEvent::TEvent convertedEvent;
+    std::visit(TOverloaded {
+        [&](NTopic::TWriteSessionEvent::TAcksEvent const& event) {
+            TWriteSessionEvent::TAcksEvent converted;
+            for (auto const& ack : event.Acks) {
+                converted.Acks.push_back(ConvertAck(ack));
+            }
+            convertedEvent = converted;
+        },
+        [&](NTopic::TWriteSessionEvent::TReadyToAcceptEvent& event) {
+            FederationContinuationTokens.push_back(std::move(event.ContinuationToken));
+            convertedEvent = TWriteSessionEvent::TReadyToAcceptEvent{IssueContinuationToken()};
+        },
+        [&](NTopic::TSessionClosedEvent const& event) {
+            auto issues = event.GetIssues();
+            convertedEvent = TSessionClosedEvent(event.GetStatus(), std::move(issues));
+        }
+    }, event);
+    return convertedEvent;
+}
+
 // Client method
 TMaybe<TWriteSessionEvent::TEvent> TWriteSessionImpl::GetEvent(bool block) {
-    return EventsQueue->GetEvent(block);
+    auto ev = FederatedWriteSession->GetEvent(block);
+    if (!ev) {
+        return {};
+    }
+    return ConvertEvent(*ev);
 }
 
 // Client method
 TVector<TWriteSessionEvent::TEvent> TWriteSessionImpl::GetEvents(bool block, TMaybe<size_t> maxEventsCount) {
-    return EventsQueue->GetEvents(block, maxEventsCount);
+    auto events = FederatedWriteSession->GetEvents(block, maxEventsCount);
+    TVector<TWriteSessionEvent::TEvent> converted;
+    for (auto& e : events) {
+        converted.push_back(ConvertEvent(e));
+    }
+    return converted;
 }
 
 ui64 TWriteSessionImpl::GetIdImpl(ui64 seqNo) {
@@ -374,8 +439,38 @@ void TWriteSessionImpl::ProcessHandleResult(THandleResult& result) {
     }
 }
 
+TWriteSessionEvent::TWriteAck TWriteSessionImpl::ConvertAck(NTopic::TWriteSessionEvent::TWriteAck const& ack) const {
+    TWriteSessionEvent::TWriteAck converted;
+    converted.SeqNo = ack.SeqNo;
+    switch (ack.State) {
+    case NTopic::TWriteSessionEvent::TWriteAck::EES_WRITTEN:
+        converted.State = TWriteSessionEvent::TWriteAck::EES_WRITTEN;
+        if (ack.Details) {
+            converted.Details = TWriteSessionEvent::TWriteAck::TWrittenMessageDetails{
+                .Offset = ack.Details->Offset,
+                .PartitionId = ack.Details->PartitionId,
+            };
+        }
+        break;
+    case NTopic::TWriteSessionEvent::TWriteAck::EES_ALREADY_WRITTEN:
+        converted.State = TWriteSessionEvent::TWriteAck::EES_ALREADY_WRITTEN;
+        break;
+    case NTopic::TWriteSessionEvent::TWriteAck::EES_DISCARDED:
+        converted.State = TWriteSessionEvent::TWriteAck::EES_DISCARDED;
+        break;
+    }
+    if (ack.Stat) {
+        converted.Stat = MakeIntrusive<TWriteStat>();
+        converted.Stat->WriteTime = ack.Stat->WriteTime;
+        converted.Stat->TotalTimeInPartitionQueue = ack.Stat->MaxTimeInPartitionQueue;
+        converted.Stat->PartitionQuotedTime = ack.Stat->PartitionQuotedTime;
+        converted.Stat->TopicQuotedTime = ack.Stat->TopicQuotedTime;
+    }
+    return converted;
+}
+
 NThreading::TFuture<void> TWriteSessionImpl::WaitEvent() {
-    return EventsQueue->WaitEvent();
+    return FederatedWriteSession->WaitEvent();
 }
 
 // Client method.
@@ -403,10 +498,13 @@ void TWriteSessionImpl::WriteEncoded(
     WriteInternal(std::move(token), data, codec, originalSize, seqNo, createTimestamp);
 }
 
-void TWriteSessionImpl::Write(
-            TContinuationToken&& token, TStringBuf data, TMaybe<ui64> seqNo, TMaybe<TInstant> createTimestamp
-        ) {
-    WriteInternal(std::move(token), data, {}, 0, seqNo, createTimestamp);
+void TWriteSessionImpl::Write(TContinuationToken&&, TStringBuf data, TMaybe<ui64> seqNo, TMaybe<TInstant> createTimestamp) {
+    auto msg = NTopic::TWriteMessage(data);
+    msg.SeqNo(seqNo);
+    msg.CreateTimestamp(createTimestamp);
+    auto token = std::move(FederationContinuationTokens.back());
+    FederationContinuationTokens.pop_back();
+    FederatedWriteSession->Write(std::move(token), std::move(msg));
 }
 
 

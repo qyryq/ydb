@@ -2,6 +2,8 @@
 #include "read_session.h"
 #include "write_session.h"
 
+#include <ydb/public/sdk/cpp/client/ydb_topic/topic_settings.h>
+
 namespace NYdb::NPQTopic {
 
 std::shared_ptr<IReadSession> TPersQueueClient::TImpl::CreateReadSession(const TReadSessionSettings& settings) {
@@ -44,6 +46,10 @@ std::shared_ptr<IWriteSession> TPersQueueClient::TImpl::CreateWriteSession(
     return std::move(session);
 }
 
+std::shared_ptr<NFederatedTopic::TFederatedTopicClient> TPersQueueClient::TImpl::GetFederatedTopicClient() {
+    return FederatedTopicClient;
+}
+
 std::shared_ptr<ISimpleBlockingWriteSession> TPersQueueClient::TImpl::CreateSimpleWriteSession(
         const TWriteSessionSettings& settings
 ) {
@@ -84,6 +90,29 @@ std::shared_ptr<TPersQueueClient::TImpl::IWriteSessionConnectionProcessorFactory
     using TRequest = Ydb::PersQueue::V1::StreamingWriteClientMessage;
     using TResponse = Ydb::PersQueue::V1::StreamingWriteServerMessage;
     return CreateConnectionProcessorFactory<TService, TRequest, TResponse>(&TService::Stub::AsyncStreamingWrite, Connections_, DbDriverState_);
+}
+
+NFederatedTopic::TFederatedTopicClientSettings ConvertToFederatedTopicClientSettings(TPersQueueClientSettings const& pqSettings) {
+    NFederatedTopic::TFederatedTopicClientSettings fedSettings;
+    // TODO(qyryq) fedSettings.DefaultCompressionExecutor(pqSettings.DefaultCompressionExecutor_);
+    // TODO(qyryq) fedSettings.DefaultHandlersExecutor(pqSettings.DefaultHandlersExecutor_);
+    if (pqSettings.Database_) {
+        fedSettings.Database(*pqSettings.Database_);
+    }
+    if (pqSettings.DiscoveryEndpoint_) {
+        fedSettings.DiscoveryEndpoint(*pqSettings.DiscoveryEndpoint_);
+    }
+    if (pqSettings.CredentialsProviderFactory_) {
+        fedSettings.CredentialsProviderFactory(*pqSettings.CredentialsProviderFactory_);
+    }
+    if (pqSettings.DiscoveryMode_) {
+        fedSettings.DiscoveryMode(*pqSettings.DiscoveryMode_);
+    }
+    if (pqSettings.SslCredentials_) {
+        fedSettings.SslCredentials(*pqSettings.SslCredentials_);
+    }
+    // TODO(qyryq) (TMaybe<TStringType>, AuthToken); ????
+    return fedSettings;
 }
 
 } // namespace NYdb::NPQTopic
