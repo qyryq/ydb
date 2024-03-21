@@ -296,8 +296,6 @@ private:
         bool Ok = true;
     };
 
-    THandleResult OnErrorImpl(NYdb::TPlainStatus&& status); // true - should Start(), false - should Close(), empty - no action
-
 public:
     TWriteSessionImpl(const TWriteSessionSettings& settings,
             std::shared_ptr<TPersQueueClient::TImpl> client,
@@ -333,63 +331,8 @@ private:
 
     TStringBuilder LogPrefix() const;
 
-    void UpdateTokenIfNeededImpl();
-
-    void WriteInternal(TContinuationToken&& continuationToken, TStringBuf data, TMaybe<ECodec> codec, ui32 originalSize,
-               TMaybe<ui64> seqNo = Nothing(), TMaybe<TInstant> createTimestamp = Nothing());
-
-    void FlushWriteIfRequiredImpl();
-    size_t WriteBatchImpl();
-    void Start(const TDuration& delay);
-    void InitWriter();
-
-    void DoCdsRequest(TDuration delay = TDuration::Zero());
-    void OnCdsResponse(TStatus& status, const Ydb::PersQueue::ClusterDiscovery::DiscoverClustersResult& result);
-    void OnConnect(TPlainStatus&& st, typename IProcessor::TPtr&& processor,
-            const NYdbGrpc::IQueueClientContextPtr& connectContext);
-    void OnConnectTimeout(const NYdbGrpc::IQueueClientContextPtr& connectTimeoutContext);
-    void ResetForRetryImpl();
-    THandleResult RestartImpl(const TPlainStatus& status);
-    void DoConnect(const TDuration& delay, const TString& endpoint);
-    void InitImpl();
-    void ReadFromProcessor(); // Assumes that we're under lock.
-    void WriteToProcessorImpl(TClientMessage&& req); // Assumes that we're under lock.
-    void OnReadDone(NYdbGrpc::TGrpcStatus&& grpcStatus, size_t connectionGeneration);
-    void OnWriteDone(NYdbGrpc::TGrpcStatus&& status, size_t connectionGeneration);
-    TProcessSrvMessageResult ProcessServerMessageImpl();
-    TMemoryUsageChange OnMemoryUsageChangedImpl(i64 diff);
-    TBuffer CompressBufferImpl(TVector<TStringBuf>& data, ECodec codec, i32 level);
-    void CompressImpl(TBlock&& block);
-    void OnCompressed(TBlock&& block, bool isSyncCompression=false);
-    TMemoryUsageChange OnCompressedImpl(TBlock&& block);
-
-    //TString GetDebugIdentity() const;
-    Ydb::PersQueue::V1::StreamingWriteClientMessage GetInitClientMessage();
-    bool CleanupOnAcknowledged(ui64 id);
-    bool IsReadyToSendNextImpl();
-    void DumpState();
-    ui64 GetNextIdImpl(const TMaybe<ui64>& seqNo);
-    ui64 GetSeqNoImpl(ui64 id);
-    ui64 GetIdImpl(ui64 seqNo);
-    void SendImpl();
-    void AbortImpl();
-    void CloseImpl(EStatus statusCode, NYql::TIssues&& issues);
-    void CloseImpl(EStatus statusCode, const TString& message);
-    void CloseImpl(TPlainStatus&& status);
-
-    void OnErrorResolved() {
-        RetryState = nullptr;
-    }
-    void CheckHandleResultImpl(THandleResult& result);
-    void ProcessHandleResult(THandleResult& result);
-    void HandleWakeUpImpl();
-    void UpdateTimedCountersImpl();
-
-private:
-
     TWriteSessionEvent::TWriteAck ConvertAck(NTopic::TWriteSessionEvent::TWriteAck const& ack) const;
     TWriteSessionEvent::TEvent ConvertEvent(NTopic::TWriteSessionEvent::TEvent& event);
-
 
 private:
     TWriteSessionSettings Settings;

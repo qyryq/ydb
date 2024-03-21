@@ -23,34 +23,30 @@ TWriteSession::TWriteSession(
     : TContextOwner(settings, std::move(client), std::move(connections), std::move(dbDriverState)) {
 }
 
-void TWriteSession::Start(const TDuration& delay) {
-    TryGetImpl()->Start(delay);
-}
-
 NThreading::TFuture<ui64> TWriteSession::GetInitSeqNo() {
     return TryGetImpl()->GetInitSeqNo();
 }
 
 TMaybe<TWriteSessionEvent::TEvent> TWriteSession::GetEvent(bool block) {
-    return TryGetImpl()->EventsQueue->GetEvent(block);
+    return TryGetImpl()->GetEvent(block);
 }
 
 TVector<TWriteSessionEvent::TEvent> TWriteSession::GetEvents(bool block, TMaybe<size_t> maxEventsCount) {
-    return TryGetImpl()->EventsQueue->GetEvents(block, maxEventsCount);
+    return TryGetImpl()->GetEvents(block, maxEventsCount);
 }
 
 NThreading::TFuture<void> TWriteSession::WaitEvent() {
-    return TryGetImpl()->EventsQueue->WaitEvent();
+    return TryGetImpl()->WaitEvent();
 }
 
 void TWriteSession::WriteEncoded(TContinuationToken&& token, TStringBuf data, ECodec codec, ui32 originalSize,
                                  TMaybe<ui64> seqNo, TMaybe<TInstant> createTimestamp) {
-    TryGetImpl()->WriteInternal(std::move(token), data, codec, originalSize, seqNo, createTimestamp);
+    TryGetImpl()->WriteEncoded(std::move(token), data, codec, originalSize, seqNo, createTimestamp);
 }
 
 void TWriteSession::Write(TContinuationToken&& token, TStringBuf data, TMaybe<ui64> seqNo,
                           TMaybe<TInstant> createTimestamp) {
-    TryGetImpl()->WriteInternal(std::move(token), data, {}, 0, seqNo, createTimestamp);
+    TryGetImpl()->Write(std::move(token), data, seqNo, createTimestamp);
 }
 
 bool TWriteSession::Close(TDuration closeTimeout) {
@@ -88,7 +84,6 @@ TSimpleBlockingWriteSession::TSimpleBlockingWriteSession(
         subSettings.EventHandlers_.CommonHandler({});
     }
     Writer = std::make_shared<TWriteSession>(subSettings, client, connections, dbDriverState);
-    Writer->Start(TDuration::Max());
 }
 
 ui64 TSimpleBlockingWriteSession::GetInitSeqNo() {

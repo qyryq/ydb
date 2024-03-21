@@ -42,7 +42,6 @@ std::shared_ptr<IWriteSession> TPersQueueClient::TImpl::CreateWriteSession(
     auto session = std::make_shared<TWriteSession>(
             maybeSettings.GetOrElse(settings), shared_from_this(), Connections_, DbDriverState_
     );
-    session->Start(TDuration::Zero());
     return std::move(session);
 }
 
@@ -111,7 +110,6 @@ NFederatedTopic::TFederatedTopicClientSettings ConvertToFederatedTopicClientSett
     if (pqSettings.SslCredentials_) {
         fedSettings.SslCredentials(*pqSettings.SslCredentials_);
     }
-    // TODO(qyryq) (TMaybe<TStringType>, AuthToken); ????
     return fedSettings;
 }
 

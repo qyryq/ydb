@@ -53,9 +53,6 @@ public:
     TWriterCounters::TPtr GetCounters() override {Y_ABORT("Unimplemented"); } //ToDo - unimplemented;
 
     ~TWriteSession(); // will not call close - destroy everything without acks
-
-private:
-    void Start(const TDuration& delay);
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
