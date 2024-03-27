@@ -12,7 +12,8 @@
 
 namespace NYdb::NPQTopic {
 
-NFederatedTopic::TFederatedTopicClientSettings ConvertToFederatedTopicClientSettings(const TPersQueueClientSettings &pqSettings);
+NFederatedTopic::TFederatedTopicClientSettings ConvertToFederatedTopicClientSettings(TPersQueueClientSettings const& pqSettings);
+NFederatedTopic::TFederatedWriteSessionSettings ConvertToFederatedWriteSessionSettings(TWriteSessionSettings const& pqSettings);
 
 class TPersQueueClient::TImpl : public TClientImplCommon<TPersQueueClient::TImpl> {
 public:
@@ -29,6 +30,7 @@ public:
     TImpl(const TDriver& driver, const TPersQueueClientSettings& settings)
         : TClientImplCommon(CreateInternalInterface(driver), settings)
         , Settings(settings)
+        , Driver(driver)
         , FederatedTopicClientSettings(ConvertToFederatedTopicClientSettings(settings))
         , FederatedTopicClient(std::make_shared<NFederatedTopic::TFederatedTopicClient>(driver, FederatedTopicClientSettings))
     {
@@ -254,6 +256,7 @@ public:
 
 private:
     const TPersQueueClientSettings Settings;
+    const TMaybe<TDriver> Driver;
     const NFederatedTopic::TFederatedTopicClientSettings FederatedTopicClientSettings;
     std::shared_ptr<NFederatedTopic::TFederatedTopicClient> FederatedTopicClient;
     const TString CustomEndpoint;

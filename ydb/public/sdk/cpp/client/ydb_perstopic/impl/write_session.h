@@ -28,10 +28,11 @@ private:
     friend class NTests::TSimpleWriteSessionTestAdapter;
 
 public:
-    TWriteSession(const TWriteSessionSettings& settings,
-            std::shared_ptr<TPersQueueClient::TImpl> client,
-            std::shared_ptr<TGRpcConnectionsImpl> connections,
-            TDbDriverStatePtr dbDriverState);
+    // TWriteSession(const TWriteSessionSettings& settings,
+    //         std::shared_ptr<TPersQueueClient::TImpl> client,
+    //         std::shared_ptr<TGRpcConnectionsImpl> connections);
+    TWriteSession(std::shared_ptr<NFederatedTopic::TFederatedTopicClient> client, TWriteSessionSettings settings);
+    // TWriteSession(std::shared_ptr<NTopic::IWriteSession> session);
 
     TMaybe<TWriteSessionEvent::TEvent> GetEvent(bool block = false) override;
     TVector<TWriteSessionEvent::TEvent> GetEvents(bool block = false,

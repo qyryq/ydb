@@ -37,73 +37,8 @@ TWriterCounters::TWriterCounters(const TIntrusivePtr<::NMonitoring::TDynamicCoun
 }
 #undef HISTOGRAM_SETUP
 
-NFederatedTopic::TFederatedWriteSessionSettings ConvertToFederatedWriteSessionSettings(TWriteSessionSettings const& pqSettings) {
-    NFederatedTopic::TFederatedWriteSessionSettings fedSettings;
-    fedSettings.Path(pqSettings.Path_);
-    fedSettings.ProducerId(pqSettings.MessageGroupId_);
-    fedSettings.MessageGroupId(pqSettings.MessageGroupId_);
-    // TODO(qyryq) fedSettings.Codec(pqSettings.Codec_);
-    fedSettings.CompressionLevel(pqSettings.CompressionLevel_);
-    fedSettings.MaxMemoryUsage(pqSettings.MaxMemoryUsage_);
-    fedSettings.MaxInflightCount(pqSettings.MaxInflightCount_);
-    fedSettings.RetryPolicy(pqSettings.RetryPolicy_);  // TODO(qyryq) Maybe convert?
-    fedSettings.BatchFlushInterval(pqSettings.BatchFlushInterval_);
-    fedSettings.BatchFlushSizeBytes(pqSettings.BatchFlushSizeBytes_);
-    fedSettings.ConnectTimeout(pqSettings.ConnectTimeout_);
-    // TODO(qyryq) fedSettings.Counters(pqSettings.Counters_);
-    // TODO(qyryq) fedSettings.CompressionExecutor(pqSettings.CompressionExecutor_);
-    // TODO(qyryq) fedSettings.EventHandlers(pqSettings.EventHandlers_);
-    fedSettings.ValidateSeqNo(pqSettings.ValidateSeqNo_);
-    if (pqSettings.PartitionGroupId_ && pqSettings.PartitionGroupId_ > 0) {
-        fedSettings.PartitionId(*pqSettings.PartitionGroupId_ - 1);
-    }
-    fedSettings.PreferredDatabase(pqSettings.PreferredCluster_);  // TODO(qyryq) Any conversions?
-    fedSettings.AllowFallback(pqSettings.AllowFallbackToOtherClusters_);
-    // TODO(qyryq) If ClusterDiscoveryMode == false, then as a topic.
-    fedSettings.DirectWriteToPartition(true);
-    return fedSettings;
-}
-
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // TWriteSessionImpl
-
-TWriteSessionImpl::TWriteSessionImpl(
-        const TWriteSessionSettings& settings,
-         std::shared_ptr<TPersQueueClient::TImpl> client,
-         std::shared_ptr<TGRpcConnectionsImpl> connections,
-         TDbDriverStatePtr dbDriverState)
-    : Settings(settings)
-    , Client(std::move(client))
-    , FederatedTopicClient(Client->GetFederatedTopicClient())
-    , Connections(std::move(connections))
-    , DbDriverState(std::move(dbDriverState))
-    , PrevToken(DbDriverState->CredentialsProvider ? DbDriverState->CredentialsProvider->GetAuthInfo() : "")
-    , InitSeqNoPromise(NThreading::NewPromise<ui64>())
-    , WakeupInterval(
-            Settings.BatchFlushInterval_.GetOrElse(TDuration::Zero()) ?
-                std::min(Settings.BatchFlushInterval_.GetOrElse(TDuration::Seconds(1)) / 5, TDuration::MilliSeconds(100))
-                :
-                TDuration::MilliSeconds(100)
-    )
-{
-    if (!Settings.RetryPolicy_) {
-        Settings.RetryPolicy_ = IRetryPolicy::GetDefaultPolicy();
-    }
-
-    // TODO(qyryq) Safe to delete.
-    if (Settings.PreferredCluster_ && !Settings.AllowFallbackToOtherClusters_) {
-        TargetCluster = *Settings.PreferredCluster_;
-        TargetCluster.to_lower();
-    }
-    if (Settings.Counters_.Defined()) {
-        Counters = *Settings.Counters_;
-    } else {
-        Counters = MakeIntrusive<TWriterCounters>(new ::NMonitoring::TDynamicCounters());
-    }
-
-    FederatedWriteSessionSettings = ConvertToFederatedWriteSessionSettings(Settings);
-    FederatedWriteSession = FederatedTopicClient->CreateWriteSession(FederatedWriteSessionSettings);
-}
 
 // Client method
 NThreading::TFuture<ui64> TWriteSessionImpl::GetInitSeqNo() {
@@ -125,8 +60,7 @@ TWriteSessionEvent::TEvent TWriteSessionImpl::ConvertEvent(NTopic::TWriteSession
             convertedEvent = converted;
         },
         [&](NTopic::TWriteSessionEvent::TReadyToAcceptEvent& event) {
-            FederationContinuationTokens.push_back(std::move(event.ContinuationToken));
-            convertedEvent = TWriteSessionEvent::TReadyToAcceptEvent{IssueContinuationToken()};
+            convertedEvent = TWriteSessionEvent::TReadyToAcceptEvent{std::move(event.ContinuationToken)};
         },
         [&](NTopic::TSessionClosedEvent const& event) {
             auto issues = event.GetIssues();
@@ -138,11 +72,10 @@ TWriteSessionEvent::TEvent TWriteSessionImpl::ConvertEvent(NTopic::TWriteSession
 
 // Client method
 TMaybe<TWriteSessionEvent::TEvent> TWriteSessionImpl::GetEvent(bool block) {
-    auto ev = FederatedWriteSession->GetEvent(block);
-    if (!ev) {
-        return {};
+    if (auto ev = FederatedWriteSession->GetEvent(block)) {
+        return ConvertEvent(*ev);
     }
-    return ConvertEvent(*ev);
+    return {};
 }
 
 // Client method
@@ -204,25 +137,21 @@ NTopic::ECodec ConvertCodecEnum(ECodec codec) {
 
 // Client method.
 void TWriteSessionImpl::WriteEncoded(
-            TContinuationToken&&, TStringBuf data, ECodec codec, ui32 originalSize, TMaybe<ui64> seqNo, TMaybe<TInstant> createTimestamp
+            TContinuationToken&& token, TStringBuf data, ECodec codec, ui32 originalSize, TMaybe<ui64> seqNo, TMaybe<TInstant> createTimestamp
         ) {
-    auto token = std::move(FederationContinuationTokens.back());
-    FederationContinuationTokens.pop_back();
     FederatedWriteSession->WriteEncoded(std::move(token), data, ConvertCodecEnum(codec), originalSize, seqNo, createTimestamp);
 }
 
-void TWriteSessionImpl::Write(TContinuationToken&&, TStringBuf data, TMaybe<ui64> seqNo, TMaybe<TInstant> createTimestamp) {
+void TWriteSessionImpl::Write(TContinuationToken&& token, TStringBuf data, TMaybe<ui64> seqNo, TMaybe<TInstant> createTimestamp) {
     auto msg = NTopic::TWriteMessage(data);
     msg.SeqNo(seqNo);
     msg.CreateTimestamp(createTimestamp);
-    auto token = std::move(FederationContinuationTokens.back());
-    FederationContinuationTokens.pop_back();
     FederatedWriteSession->Write(std::move(token), std::move(msg));
 }
 
-TStringBuilder TWriteSessionImpl::LogPrefix() const {
-    return TStringBuilder() << "MessageGroupId [" << Settings.MessageGroupId_ << "] SessionId [" << SessionId << "] ";
-}
+// TStringBuilder TWriteSessionImpl::LogPrefix() const {
+//     return TStringBuilder() << "MessageGroupId [" << Settings.MessageGroupId_ << "] SessionId [" << SessionId << "] ";
+// }
 
 TString TWriteSessionEvent::TAcksEvent::DebugString() const {
     TStringBuilder res;
@@ -252,7 +181,7 @@ bool TWriteSessionImpl::Close(TDuration closeTimeout) {
 }
 
 TWriteSessionImpl::~TWriteSessionImpl() {
-    LOG_LAZY(DbDriverState->Log, TLOG_DEBUG, LogPrefix() << "Write session: destroy");
+    // LOG_LAZY(DbDriverState->Log, TLOG_DEBUG, LogPrefix() << "Write session: destroy");
 }
 
 }; // namespace NYdb::NPQTopic

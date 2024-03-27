@@ -25,134 +25,7 @@ inline const TString& GetCodecId(const ECodec codec) {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // TWriteSessionEventsQueue
 
-class TWriteSessionEventsQueue: public TBaseSessionEventsQueue<TWriteSessionSettings, TWriteSessionEvent::TEvent, TSessionClosedEvent, IExecutor> {
-    using TParent = TBaseSessionEventsQueue<TWriteSessionSettings, TWriteSessionEvent::TEvent, TSessionClosedEvent, IExecutor>;
-
-public:
-    TWriteSessionEventsQueue(const TWriteSessionSettings& settings)
-    : TParent(settings)
-    {}
-
-    void PushEvent(TEventInfo eventInfo) {
-        if (Closed || ApplyHandler(eventInfo)) {
-            return;
-        }
-
-        TWaiter waiter;
-        with_lock (Mutex) {
-            Events.emplace(std::move(eventInfo));
-            waiter = PopWaiterImpl();
-        }
-        waiter.Signal(); // Does nothing if waiter is empty.
-    }
-
-    TMaybe<TEvent> GetEvent(bool block = false) {
-        TMaybe<TEventInfo> eventInfo;
-        with_lock (Mutex) {
-            if (block) {
-                WaitEventsImpl();
-            }
-            if (HasEventsImpl()) {
-                eventInfo = GetEventImpl();
-            } else {
-                return Nothing();
-            }
-        }
-        eventInfo->OnUserRetrievedEvent();
-        return std::move(eventInfo->Event);
-    }
-
-    TVector<TEvent> GetEvents(bool block = false, TMaybe<size_t> maxEventsCount = Nothing()) {
-        TVector<TEventInfo> eventInfos;
-        with_lock (Mutex) {
-            if (block) {
-                WaitEventsImpl();
-            }
-            eventInfos.reserve(Min(Events.size() + CloseEvent.Defined(), maxEventsCount ? *maxEventsCount : std::numeric_limits<size_t>::max()));
-            while (!Events.empty()) {
-                eventInfos.emplace_back(GetEventImpl());
-                if (maxEventsCount && eventInfos.size() >= *maxEventsCount) {
-                    break;
-                }
-            }
-            if (CloseEvent && Events.empty() && (!maxEventsCount || eventInfos.size() < *maxEventsCount)) {
-                eventInfos.push_back({*CloseEvent});
-            }
-        }
-
-        TVector<TEvent> result;
-        result.reserve(eventInfos.size());
-        for (TEventInfo& eventInfo : eventInfos) {
-            eventInfo.OnUserRetrievedEvent();
-            result.emplace_back(std::move(eventInfo.Event));
-        }
-        return result;
-    }
-
-    void Close(const TSessionClosedEvent& event) {
-        TWaiter waiter;
-        with_lock (Mutex) {
-            CloseEvent = event;
-            Closed = true;
-            waiter = TWaiter(Waiter.ExtractPromise(), this);
-        }
-
-        TEventInfo info(event);
-        ApplyHandler(info);
-
-        waiter.Signal();
-    }
-
-private:
-    struct THandlersVisitor : public TParent::TBaseHandlersVisitor {
-        using TParent::TBaseHandlersVisitor::TBaseHandlersVisitor;
-
-#define DECLARE_HANDLER(type, handler, answer)                      \
-        bool operator()(type&) {                                    \
-            if (this->PushHandler<type>(                            \
-                std::move(TParent::TBaseHandlersVisitor::Event),    \
-                this->Settings.EventHandlers_.handler,              \
-                this->Settings.EventHandlers_.CommonHandler_)) {    \
-                return answer;                                      \
-            }                                                       \
-            return false;                                           \
-        }                                                           \
-        /**/
-
-        DECLARE_HANDLER(TWriteSessionEvent::TAcksEvent, AcksHandler_, true);
-        DECLARE_HANDLER(TWriteSessionEvent::TReadyToAcceptEvent, ReadyToAcceptHandler_, true);
-        DECLARE_HANDLER(TSessionClosedEvent, SessionClosedHandler_, false); // Not applied
-
-#undef DECLARE_HANDLER
-
-        bool Visit() {
-            return std::visit(*this, Event);
-        }
-    };
-
-    bool ApplyHandler(TEventInfo& eventInfo) {
-        THandlersVisitor visitor(Settings, eventInfo.GetEvent());
-        return visitor.Visit();
-    }
-
-    TEventInfo GetEventImpl() { // Assumes that we're under lock and that the event queue has events.
-        Y_ASSERT(HasEventsImpl());
-        if (!Events.empty()) {
-            TEventInfo event = std::move(Events.front());
-            Events.pop();
-            RenewWaiterImpl();
-            return event;
-        }
-        Y_ASSERT(CloseEvent);
-        return {*CloseEvent};
-    }
-};
-
-struct TMemoryUsageChange {
-    bool WasOk; //!< MemoryUsage <= Config.MaxMemoryUsage_ before update
-    bool NowOk; //!< Same, only after update
-};
-
+// TODO(qyryq) Delete it?
 namespace NTests {
     class TSimpleWriteSessionTestAdapter;
 }
@@ -297,10 +170,13 @@ private:
     };
 
 public:
-    TWriteSessionImpl(const TWriteSessionSettings& settings,
-            std::shared_ptr<TPersQueueClient::TImpl> client,
-            std::shared_ptr<TGRpcConnectionsImpl> connections,
-            TDbDriverStatePtr dbDriverState);
+    // TWriteSessionImpl(const TWriteSessionSettings& settings,
+    //         std::shared_ptr<TPersQueueClient::TImpl> client);
+
+    TWriteSessionImpl(TWriteSessionSettings settings, std::shared_ptr<NFederatedTopic::TFederatedTopicClient> client)
+        : FederatedTopicClient(std::move(client))
+        , FederatedWriteSession(FederatedTopicClient->CreateWriteSession(ConvertToFederatedWriteSessionSettings(settings))) {
+    }
 
     TMaybe<TWriteSessionEvent::TEvent> GetEvent(bool block = false);
     TVector<TWriteSessionEvent::TEvent> GetEvents(bool block = false,
@@ -321,41 +197,21 @@ public:
 
     TWriterCounters::TPtr GetCounters() {Y_ABORT("Unimplemented"); } //ToDo - unimplemented;
 
-    const TWriteSessionSettings& GetSettings() const {
-        return Settings;
-    }
-
     ~TWriteSessionImpl(); // will not call close - destroy everything without acks
 
 private:
 
-    TStringBuilder LogPrefix() const;
+    // TStringBuilder LogPrefix() const;
 
     TWriteSessionEvent::TWriteAck ConvertAck(NTopic::TWriteSessionEvent::TWriteAck const& ack) const;
     TWriteSessionEvent::TEvent ConvertEvent(NTopic::TWriteSessionEvent::TEvent& event);
 
 private:
-    TWriteSessionSettings Settings;
-    NFederatedTopic::TFederatedWriteSessionSettings FederatedWriteSessionSettings;
-    std::shared_ptr<TPersQueueClient::TImpl> Client;
     std::shared_ptr<NFederatedTopic::TFederatedTopicClient> FederatedTopicClient;
     std::shared_ptr<NTopic::IWriteSession> FederatedWriteSession;
-    TVector<NTopic::TContinuationToken> FederationContinuationTokens;
-    std::shared_ptr<TGRpcConnectionsImpl> Connections;
     TString TargetCluster;
     TString InitialCluster;
     TString CurrentCluster;
-    TString PreferredClusterByCDS;
-    std::shared_ptr<IWriteSessionConnectionProcessorFactory> ConnectionFactory;
-    TDbDriverStatePtr DbDriverState;
-    TStringType PrevToken;
-    bool UpdateTokenInProgress = false;
-    TInstant LastTokenUpdate = TInstant::Zero();
-    std::shared_ptr<TWriteSessionEventsQueue> EventsQueue;
-    NYdbGrpc::IQueueClientContextPtr ClientContext; // Common client context.
-    NYdbGrpc::IQueueClientContextPtr ConnectContext;
-    NYdbGrpc::IQueueClientContextPtr ConnectTimeoutContext;
-    NYdbGrpc::IQueueClientContextPtr ConnectDelayContext;
     size_t ConnectionGeneration = 0;
     size_t ConnectionAttemptsDone = 0;
     TAdaptiveLock Lock;
@@ -370,12 +226,6 @@ private:
     bool FirstTokenSent = false;
 
     TMessageBatch CurrentBatch;
-
-    std::queue<TOriginalMessage> OriginalMessagesToSend;
-    std::priority_queue<TBlock, std::vector<TBlock>, Greater> PackedMessagesToSend;
-    //! Messages that are sent but yet not acknowledged
-    std::queue<TOriginalMessage> SentOriginalMessages;
-    std::queue<TBlock> SentPackedMessage;
 
     const size_t MaxBlockSize = std::numeric_limits<size_t>::max();
     const size_t MaxBlockMessageCount = 1; //!< Max message count that can be packed into a single block. In block version 0 is equal to 1 for compatibility

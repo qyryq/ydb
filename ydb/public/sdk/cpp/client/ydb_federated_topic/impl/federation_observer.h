@@ -96,7 +96,7 @@ class TFederatedDbObserver : public NPersQueue::TContextOwner<TFederatedDbObserv
 public:
     inline TFederatedDbObserver(std::shared_ptr<TGRpcConnectionsImpl> connections,
                                 const TFederatedTopicClientSettings& settings)
-        : TContextOwner(connections, settings) {
+        : TContextOwner(std::move(connections), settings) {
     }
 
     inline std::shared_ptr<TFederatedDbState> GetState() {

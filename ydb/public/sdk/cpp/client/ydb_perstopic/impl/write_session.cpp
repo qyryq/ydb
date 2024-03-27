@@ -15,13 +15,19 @@ namespace NYdb::NPQTopic {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // TWriteSession
 
-TWriteSession::TWriteSession(
-        const TWriteSessionSettings& settings,
-         std::shared_ptr<TPersQueueClient::TImpl> client,
-         std::shared_ptr<TGRpcConnectionsImpl> connections,
-         TDbDriverStatePtr dbDriverState)
-    : TContextOwner(settings, std::move(client), std::move(connections), std::move(dbDriverState)) {
-}
+// TWriteSession::TWriteSession(
+//         const TWriteSessionSettings& settings,
+//          std::shared_ptr<TPersQueueClient::TImpl> client,
+//          std::shared_ptr<TGRpcConnectionsImpl> connections)
+//     : TContextOwner(settings, std::move(client), std::move(connections)) {
+// }
+
+TWriteSession::TWriteSession(std::shared_ptr<NFederatedTopic::TFederatedTopicClient> client, TWriteSessionSettings settings)
+    : TContextOwner(settings, client) {}
+
+// TWriteSession::TWriteSession(std::shared_ptr<NTopic::IWriteSession> session)
+//     : TContextOwner(std::move(session)) {
+// }
 
 NThreading::TFuture<ui64> TWriteSession::GetInitSeqNo() {
     return TryGetImpl()->GetInitSeqNo();
@@ -61,10 +67,10 @@ TWriteSession::~TWriteSession() {
 // TSimpleBlockingWriteSession
 
 TSimpleBlockingWriteSession::TSimpleBlockingWriteSession(
-        const TWriteSessionSettings& settings,
-        std::shared_ptr<TPersQueueClient::TImpl> client,
-        std::shared_ptr<TGRpcConnectionsImpl> connections,
-        TDbDriverStatePtr dbDriverState
+        [[maybe_unused]] const TWriteSessionSettings& settings,
+        [[maybe_unused]] std::shared_ptr<TPersQueueClient::TImpl> client,
+        [[maybe_unused]] std::shared_ptr<TGRpcConnectionsImpl> connections,
+        [[maybe_unused]] TDbDriverStatePtr dbDriverState
 ) {
     auto subSettings = settings;
     if (settings.EventHandlers_.AcksHandler_) {
@@ -83,7 +89,8 @@ TSimpleBlockingWriteSession::TSimpleBlockingWriteSession(
         LOG_LAZY(dbDriverState->Log, TLOG_WARNING, "TSimpleBlockingWriteSession: Cannot use CommonHandler, resetting.");
         subSettings.EventHandlers_.CommonHandler({});
     }
-    Writer = std::make_shared<TWriteSession>(subSettings, client, connections, dbDriverState);
+    // TODO(qyryq) Fix here.
+    // Writer = std::make_shared<TWriteSession>(subSettings, client, connections, dbDriverState);
 }
 
 ui64 TSimpleBlockingWriteSession::GetInitSeqNo() {

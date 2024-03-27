@@ -1,4 +1,5 @@
 #pragma once
+#include "ydb/public/sdk/cpp/client/ydb_topic/topic_settings.h"
 #include <ydb/public/api/grpc/draft/ydb_persqueue_v1.grpc.pb.h>
 #include <ydb/public/sdk/cpp/client/ydb_driver/driver.h>
 #include <ydb/public/sdk/cpp/client/ydb_topic/codecs/codecs.h>
@@ -358,34 +359,8 @@ enum class EClusterDiscoveryMode {
     Off
 };
 
-class TContinuationToken : public TNonCopyable {
-    friend class TContinuationTokenIssuer;
-
-    bool Valid = true;
-
-public:
-    TContinuationToken& operator=(TContinuationToken&& other) {
-        if (!other.Valid) {
-            ythrow TContractViolation("Cannot move invalid token");
-        }
-        Valid = std::exchange(other.Valid, false);
-        return *this;
-    }
-
-    TContinuationToken(TContinuationToken&& other) {
-        *this = std::move(other);
-    }
-
-private:
-    TContinuationToken() = default;
-};
-
-class TContinuationTokenIssuer {
-protected:
-    static auto IssueContinuationToken() {
-        return TContinuationToken{};
-    }
-};
+using TContinuationToken = NTopic::TContinuationToken;
+using TContinuationTokenIssuer = NTopic::TContinuationTokenIssuer;
 
 struct TWriterCounters : public TThrRefBase {
     using TSelf = TWriterCounters;
