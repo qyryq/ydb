@@ -494,4 +494,6 @@ public:
 
 IExecutor::TPtr CreateGenericExecutor();
 
+NTopic::ECodec ConvertCodecEnum(ECodec codec);
+
 } // namespace NYdb::NPQTopic

@@ -197,4 +197,17 @@ IExecutor::TPtr CreateSyncExecutor()
     return MakeIntrusive<TSyncExecutor>();
 }
 
+NTopic::ECodec ConvertCodecEnum(ECodec codec) {
+    switch (codec) {
+    case ECodec::RAW:
+        return NTopic::ECodec::RAW;
+    case ECodec::GZIP:
+        return NTopic::ECodec::GZIP;
+    case ECodec::LZOP:
+        return NTopic::ECodec::LZOP;
+    case ECodec::ZSTD:
+        return NTopic::ECodec::ZSTD;
+    }
+}
+
 }

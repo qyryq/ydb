@@ -66,32 +66,8 @@ TWriteSession::~TWriteSession() {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // TSimpleBlockingWriteSession
 
-TSimpleBlockingWriteSession::TSimpleBlockingWriteSession(
-        [[maybe_unused]] const TWriteSessionSettings& settings,
-        [[maybe_unused]] std::shared_ptr<TPersQueueClient::TImpl> client,
-        [[maybe_unused]] std::shared_ptr<TGRpcConnectionsImpl> connections,
-        [[maybe_unused]] TDbDriverStatePtr dbDriverState
-) {
-    auto subSettings = settings;
-    if (settings.EventHandlers_.AcksHandler_) {
-        LOG_LAZY(dbDriverState->Log, TLOG_WARNING, "TSimpleBlockingWriteSession: Cannot use AcksHandler, resetting.");
-        subSettings.EventHandlers_.AcksHandler({});
-    }
-    if (settings.EventHandlers_.ReadyToAcceptHandler_) {
-        LOG_LAZY(dbDriverState->Log, TLOG_WARNING, "TSimpleBlockingWriteSession: Cannot use ReadyToAcceptHandler, resetting.");
-        subSettings.EventHandlers_.ReadyToAcceptHandler({});
-    }
-    if (settings.EventHandlers_.SessionClosedHandler_) {
-        LOG_LAZY(dbDriverState->Log, TLOG_WARNING, "TSimpleBlockingWriteSession: Cannot use SessionClosedHandler, resetting.");
-        subSettings.EventHandlers_.SessionClosedHandler({});
-    }
-    if (settings.EventHandlers_.CommonHandler_) {
-        LOG_LAZY(dbDriverState->Log, TLOG_WARNING, "TSimpleBlockingWriteSession: Cannot use CommonHandler, resetting.");
-        subSettings.EventHandlers_.CommonHandler({});
-    }
-    // TODO(qyryq) Fix here.
-    // Writer = std::make_shared<TWriteSession>(subSettings, client, connections, dbDriverState);
-}
+TSimpleBlockingWriteSession::TSimpleBlockingWriteSession(std::shared_ptr<TWriteSession> writer)
+    : Writer(writer) {}
 
 ui64 TSimpleBlockingWriteSession::GetInitSeqNo() {
     return Writer->GetInitSeqNo().GetValueSync();

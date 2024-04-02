@@ -1,7 +1,5 @@
 #pragma once
 
-#include "common.h"
-#include "persqueue_impl.h"
 #include "write_session_impl.h"
 
 #include <ydb/public/sdk/cpp/client/ydb_perstopic/persqueue.h>
@@ -54,6 +52,7 @@ public:
     TWriterCounters::TPtr GetCounters() override {Y_ABORT("Unimplemented"); } //ToDo - unimplemented;
 
     ~TWriteSession(); // will not call close - destroy everything without acks
+
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -69,11 +68,7 @@ private:
     using IProcessor = TWriteSessionImpl::IProcessor;
 
 public:
-    TSimpleBlockingWriteSession(
-            const TWriteSessionSettings& settings,
-            std::shared_ptr<TPersQueueClient::TImpl> client,
-            std::shared_ptr<TGRpcConnectionsImpl> connections,
-            TDbDriverStatePtr dbDriverState);
+    TSimpleBlockingWriteSession(std::shared_ptr<TWriteSession> writer);
 
     bool Write(TStringBuf data, TMaybe<ui64> seqNo = Nothing(), TMaybe<TInstant> createTimestamp = Nothing(),
                const TDuration& blockTimeout = TDuration::Max()) override;

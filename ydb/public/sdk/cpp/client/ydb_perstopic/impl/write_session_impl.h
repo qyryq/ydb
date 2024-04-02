@@ -175,7 +175,7 @@ public:
 
     TWriteSessionImpl(TWriteSessionSettings settings, std::shared_ptr<NFederatedTopic::TFederatedTopicClient> client)
         : FederatedTopicClient(std::move(client))
-        , FederatedWriteSession(FederatedTopicClient->CreateWriteSession(ConvertToFederatedWriteSessionSettings(settings))) {
+        , FederatedWriteSession(FederatedTopicClient->CreateWriteSession(ConvertWriteSessionSettings(settings))) {
     }
 
     TMaybe<TWriteSessionEvent::TEvent> GetEvent(bool block = false);
@@ -205,6 +205,10 @@ private:
 
     TWriteSessionEvent::TWriteAck ConvertAck(NTopic::TWriteSessionEvent::TWriteAck const& ack) const;
     TWriteSessionEvent::TEvent ConvertEvent(NTopic::TWriteSessionEvent::TEvent& event);
+    TWriteSessionEvent::TAcksEvent ConvertAcksEvent(NTopic::TWriteSessionEvent::TAcksEvent const& event);
+    TWriteSessionEvent::TReadyToAcceptEvent ConvertReadyToAcceptEvent(NTopic::TWriteSessionEvent::TReadyToAcceptEvent const& event);
+    TSessionClosedEvent ConvertSessionClosedEvent(NTopic::TSessionClosedEvent const& event);
+    NFederatedTopic::TFederatedWriteSessionSettings ConvertWriteSessionSettings(TWriteSessionSettings const& pqSettings);
 
 private:
     std::shared_ptr<NFederatedTopic::TFederatedTopicClient> FederatedTopicClient;

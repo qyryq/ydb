@@ -24,33 +24,6 @@ std::shared_ptr<IReadSession> TPersQueueClient::TImpl::CreateReadSession(const T
     return std::move(session);
 }
 
-NFederatedTopic::TFederatedWriteSessionSettings ConvertToFederatedWriteSessionSettings(TWriteSessionSettings const& pqSettings) {
-    NFederatedTopic::TFederatedWriteSessionSettings fedSettings;
-    fedSettings.Path(pqSettings.Path_);
-    fedSettings.ProducerId(pqSettings.MessageGroupId_);
-    fedSettings.MessageGroupId(pqSettings.MessageGroupId_);
-    // TODO(qyryq) fedSettings.Codec(pqSettings.Codec_);
-    fedSettings.CompressionLevel(pqSettings.CompressionLevel_);
-    fedSettings.MaxMemoryUsage(pqSettings.MaxMemoryUsage_);
-    fedSettings.MaxInflightCount(pqSettings.MaxInflightCount_);
-    fedSettings.RetryPolicy(pqSettings.RetryPolicy_);  // TODO(qyryq) Maybe convert?
-    fedSettings.BatchFlushInterval(pqSettings.BatchFlushInterval_);
-    fedSettings.BatchFlushSizeBytes(pqSettings.BatchFlushSizeBytes_);
-    fedSettings.ConnectTimeout(pqSettings.ConnectTimeout_);
-    // TODO(qyryq) fedSettings.Counters(pqSettings.Counters_);
-    // TODO(qyryq) fedSettings.CompressionExecutor(pqSettings.CompressionExecutor_);
-    // TODO(qyryq) fedSettings.EventHandlers(pqSettings.EventHandlers_);
-    fedSettings.ValidateSeqNo(pqSettings.ValidateSeqNo_);
-    if (pqSettings.PartitionGroupId_ && pqSettings.PartitionGroupId_ > 0) {
-        fedSettings.PartitionId(*pqSettings.PartitionGroupId_ - 1);
-    }
-    fedSettings.PreferredDatabase(pqSettings.PreferredCluster_);  // TODO(qyryq) Any conversions?
-    fedSettings.AllowFallback(pqSettings.AllowFallbackToOtherClusters_);
-    // TODO(qyryq) If ClusterDiscoveryMode == false, then as a topic.
-    fedSettings.DirectWriteToPartition(false);
-    return fedSettings;
-}
-
 std::pair<TString, TString> PrepareDatabaseTopicPathsForFederatedClient(TStringBuf endpoint, TStringBuf database, TStringBuf topic) {
     TString dbPath(database);
     TString topicPath(topic);
@@ -73,9 +46,11 @@ std::pair<TString, TString> PrepareDatabaseTopicPathsForFederatedClient(TStringB
     return {dbPath, topicPath};
 }
 
-std::shared_ptr<IWriteSession> TPersQueueClient::TImpl::CreateWriteSession(
-        const TWriteSessionSettings& settings
-) {
+std::shared_ptr<IWriteSession> TPersQueueClient::TImpl::CreateWriteSession(const TWriteSessionSettings& settings) {
+    return CreateTWriteSession(settings);
+}
+
+std::shared_ptr<TWriteSession> TPersQueueClient::TImpl::CreateTWriteSession(const TWriteSessionSettings& settings) {
     TMaybe<TWriteSessionSettings> maybeSettings;
     // if (!settings.CompressionExecutor_ || !settings.EventHandlers_.HandlersExecutor_) {
     //     maybeSettings = settings;
@@ -109,10 +84,10 @@ std::shared_ptr<IWriteSession> TPersQueueClient::TImpl::CreateWriteSession(
     // Cerr << "XXXXX dbPath=" << database << " topic=" << topic << Endl;
     auto clientSettings = FederatedTopicClientSettings;
     clientSettings.Database(database);
-    auto sessionSettings = maybeSettings.GetOrElse(settings);
-    sessionSettings.Path(topic);
+    auto writerSettings = maybeSettings.GetOrElse(settings);
+    writerSettings.Path(topic);
     auto client = std::make_shared<NFederatedTopic::TFederatedTopicClient>(*Driver, clientSettings);
-    return std::make_shared<TWriteSession>(client, sessionSettings);
+    return std::make_shared<TWriteSession>(client, writerSettings);
 }
 
 std::shared_ptr<NFederatedTopic::TFederatedTopicClient> TPersQueueClient::TImpl::GetFederatedTopicClient() {
@@ -122,18 +97,30 @@ std::shared_ptr<NFederatedTopic::TFederatedTopicClient> TPersQueueClient::TImpl:
 std::shared_ptr<ISimpleBlockingWriteSession> TPersQueueClient::TImpl::CreateSimpleWriteSession(
         const TWriteSessionSettings& settings
 ) {
-    auto alteredSettings = settings;
+    auto subSettings = settings;
     // with_lock (Lock) {
-    //     alteredSettings.EventHandlers_.HandlersExecutor(Settings.DefaultHandlersExecutor_);
+    //     subSettings.EventHandlers_.HandlersExecutor(Settings.DefaultHandlersExecutor_);
     //     if (!settings.CompressionExecutor_) {
-    //         alteredSettings.CompressionExecutor(Settings.DefaultCompressionExecutor_);
+    //         subSettings.CompressionExecutor(Settings.DefaultCompressionExecutor_);
     //     }
     // }
-
-    auto session = std::make_shared<TSimpleBlockingWriteSession>(
-            alteredSettings, shared_from_this(), Connections_, DbDriverState_
-    );
-    return std::move(session);
+    if (settings.EventHandlers_.AcksHandler_) {
+        // LOG_LAZY(dbDriverState->Log, TLOG_WARNING, "TSimpleBlockingWriteSession: Cannot use AcksHandler, resetting.");
+        subSettings.EventHandlers_.AcksHandler({});
+    }
+    if (settings.EventHandlers_.ReadyToAcceptHandler_) {
+        // LOG_LAZY(dbDriverState->Log, TLOG_WARNING, "TSimpleBlockingWriteSession: Cannot use ReadyToAcceptHandler, resetting.");
+        subSettings.EventHandlers_.ReadyToAcceptHandler({});
+    }
+    if (settings.EventHandlers_.SessionClosedHandler_) {
+        // LOG_LAZY(dbDriverState->Log, TLOG_WARNING, "TSimpleBlockingWriteSession: Cannot use SessionClosedHandler, resetting.");
+        subSettings.EventHandlers_.SessionClosedHandler({});
+    }
+    if (settings.EventHandlers_.CommonHandler_) {
+        // LOG_LAZY(dbDriverState->Log, TLOG_WARNING, "TSimpleBlockingWriteSession: Cannot use CommonHandler, resetting.");
+        subSettings.EventHandlers_.CommonHandler({});
+    }
+    return std::make_shared<TSimpleBlockingWriteSession>(CreateTWriteSession(subSettings));
 }
 
 std::shared_ptr<TPersQueueClient::TImpl> TPersQueueClient::TImpl::GetClientForEndpoint(const TString& clusterEndoint) {
@@ -161,50 +148,31 @@ std::shared_ptr<TPersQueueClient::TImpl::IWriteSessionConnectionProcessorFactory
     return CreateConnectionProcessorFactory<TService, TRequest, TResponse>(&TService::Stub::AsyncStreamingWrite, Connections_, DbDriverState_);
 }
 
-NFederatedTopic::TFederatedTopicClientSettings ConvertToFederatedTopicClientSettings(TPersQueueClientSettings const& pqSettings) {
-    NFederatedTopic::TFederatedTopicClientSettings fedSettings;
-    // TODO(qyryq) fedSettings.DefaultCompressionExecutor(pqSettings.DefaultCompressionExecutor_);
-    // TODO(qyryq) fedSettings.DefaultHandlersExecutor(pqSettings.DefaultHandlersExecutor_);
+NFederatedTopic::TFederatedTopicClientSettings ConvertClientSettings(TPersQueueClientSettings const& pq) {
+    NFederatedTopic::TFederatedTopicClientSettings federated;
+    // TODO(qyryq) federated.DefaultCompressionExecutor(pq.DefaultCompressionExecutor_);
+    // TODO(qyryq) federated.DefaultHandlersExecutor(pq.DefaultHandlersExecutor_);
 
-    if (pqSettings.Database_) {
-        auto db = *pqSettings.Database_;
-        // if (db == "/Root") {
-        //     TStringBuf path = settings->Topic;
-        //     path.SkipPrefix("/");
-        //     TString accountName(path.NextTok('/'));
-        //     topicPath = path;
-        //     if (IsFederation(GetHost(Config().Endpoint()))) {
-        //         // settings->Topic should be in the format <account-name>/<directory>/<topic-name> (directory is optional).
-        //         // Federated Topic SDK expects /logbroker-federation/<account-name> database path, and <directory>/<topic-name> topic path.
-        //         // Config().Database() is equal to /Root here, but we ignore it, as TFederationDiscoveryServiceActor (kikimr only)
-        //         // prepends it on the server side and the Federated Topic SDK receives the full path in a ListFederationDatabasesResponse.
-        //         dbPath = "/logbroker-federation/" + accountName;
-        //     } else {
-        //         // Special case for lbkx[t].
-        //         dbPath = "/Root/logbroker-federation/" + accountName;
-        //     }
-        // } else {
-        //     // If the endpoint + database-path combination does not point to a federation,
-        //     // we pass the database and topic paths to Federated Topic SDK unchanged.
-        //     topicPath = settings->Topic;
-        //     dbPath = Config().Database();
-        // }
-        // YLOG_DEBUG(TStringBuilder() << "dbPath=" << dbPath << " topicPath=" << topicPath);
-        fedSettings.Database(db);
+    // TODO(qyryq) pq.ClusterDiscoveryMode_
+
+
+
+    if (pq.Database_) {
+        federated.Database(*pq.Database_);
     }
-    if (pqSettings.DiscoveryEndpoint_) {
-        fedSettings.DiscoveryEndpoint(*pqSettings.DiscoveryEndpoint_);
+    if (pq.DiscoveryEndpoint_) {
+        federated.DiscoveryEndpoint(*pq.DiscoveryEndpoint_);
     }
-    if (pqSettings.CredentialsProviderFactory_) {
-        fedSettings.CredentialsProviderFactory(*pqSettings.CredentialsProviderFactory_);
+    if (pq.CredentialsProviderFactory_) {
+        federated.CredentialsProviderFactory(*pq.CredentialsProviderFactory_);
     }
-    if (pqSettings.DiscoveryMode_) {
-        fedSettings.DiscoveryMode(*pqSettings.DiscoveryMode_);
+    if (pq.DiscoveryMode_) {
+        federated.DiscoveryMode(*pq.DiscoveryMode_);
     }
-    if (pqSettings.SslCredentials_) {
-        fedSettings.SslCredentials(*pqSettings.SslCredentials_);
+    if (pq.SslCredentials_) {
+        federated.SslCredentials(*pq.SslCredentials_);
     }
-    return fedSettings;
+    return federated;
 }
 
 } // namespace NYdb::NPQTopic

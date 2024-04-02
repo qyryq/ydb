@@ -1,5 +1,6 @@
 #include "util/generic/overloaded.h"
 #include "write_session.h"
+#include "common.h"
 #include <ydb/public/sdk/cpp/client/ydb_perstopic/impl/log_lazy.h>
 
 #include <ydb/public/sdk/cpp/client/ydb_perstopic/persqueue.h>
@@ -8,6 +9,7 @@
 #include <util/generic/store_policy.h>
 #include <util/generic/utility.h>
 #include <util/stream/buffer.h>
+
 
 
 namespace NYdb::NPQTopic {
@@ -49,25 +51,96 @@ TString DebugString(const TWriteSessionEvent::TEvent& event) {
     return std::visit([](const auto& ev) { return ev.DebugString(); }, event);
 }
 
-TWriteSessionEvent::TEvent TWriteSessionImpl::ConvertEvent(NTopic::TWriteSessionEvent::TEvent& event) {
-    TWriteSessionEvent::TEvent convertedEvent;
-    std::visit(TOverloaded {
-        [&](NTopic::TWriteSessionEvent::TAcksEvent const& event) {
-            TWriteSessionEvent::TAcksEvent converted;
-            for (auto const& ack : event.Acks) {
-                converted.Acks.push_back(ConvertAck(ack));
+NFederatedTopic::TFederatedWriteSessionSettings TWriteSessionImpl::ConvertWriteSessionSettings(TWriteSessionSettings const& pq) {
+    NFederatedTopic::TFederatedWriteSessionSettings federated;
+    federated.Path(pq.Path_);
+    federated.ProducerId(pq.MessageGroupId_);
+    federated.MessageGroupId(pq.MessageGroupId_);
+    federated.Codec(ConvertCodecEnum(pq.Codec_));
+    federated.CompressionLevel(pq.CompressionLevel_);
+    federated.MaxMemoryUsage(pq.MaxMemoryUsage_);
+    federated.MaxInflightCount(pq.MaxInflightCount_);
+    federated.RetryPolicy(pq.RetryPolicy_);
+    federated.BatchFlushInterval(pq.BatchFlushInterval_);
+    federated.BatchFlushSizeBytes(pq.BatchFlushSizeBytes_);
+    federated.ConnectTimeout(pq.ConnectTimeout_);
+    // TODO(qyryq) federated.Counters(pq.Counters_);
+    federated.CompressionExecutor(pq.CompressionExecutor_);
+    if (auto h = pq.EventHandlers_.ReadyToAcceptHandler_) {
+        federated.EventHandlers_.ReadyToAcceptHandler([ctx = SelfContext, h](NTopic::TWriteSessionEvent::TReadyToAcceptEvent& e) {
+            if (auto self = ctx->LockShared()) {
+                auto converted = self->ConvertReadyToAcceptEvent(e);
+                h(converted);
             }
-            convertedEvent = converted;
+        });
+    }
+    if (auto h = pq.EventHandlers_.AcksHandler_) {
+        federated.EventHandlers_.AcksHandler([ctx = SelfContext, h](NTopic::TWriteSessionEvent::TAcksEvent& e) {
+            if (auto self = ctx->LockShared()) {
+                auto converted = self->ConvertAcksEvent(e);
+                h(converted);
+            }
+        });
+    }
+    if (auto h = pq.EventHandlers_.CommonHandler_) {
+        federated.EventHandlers_.CommonHandler([ctx = SelfContext, h](NTopic::TWriteSessionEvent::TEvent& e) {
+            if (auto self = ctx->LockShared()) {
+                auto converted = self->ConvertEvent(e);
+                h(converted);
+            }
+        });
+    }
+    if (auto h = pq.EventHandlers_.SessionClosedHandler_) {
+        federated.EventHandlers_.SessionClosedHandler([ctx = SelfContext, h](NTopic::TSessionClosedEvent const& e) {
+            if (auto self = ctx->LockShared()) {
+                auto converted = self->ConvertSessionClosedEvent(e);
+                h(converted);
+            }
+        });
+    }
+    federated.ValidateSeqNo(pq.ValidateSeqNo_);
+    if (pq.PartitionGroupId_ && pq.PartitionGroupId_ > 0) {
+        federated.PartitionId(*pq.PartitionGroupId_ - 1);
+    }
+    federated.PreferredDatabase(pq.PreferredCluster_);
+    federated.AllowFallback(pq.AllowFallbackToOtherClusters_);
+    // TODO(qyryq) If pq.ClusterDiscoveryMode == false, then as a topic.
+    federated.DirectWriteToPartition(false);
+    return federated;
+}
+
+TWriteSessionEvent::TAcksEvent TWriteSessionImpl::ConvertAcksEvent(NTopic::TWriteSessionEvent::TAcksEvent const& event) {
+    TWriteSessionEvent::TAcksEvent converted;
+    converted.Acks.reserve(event.Acks.size());
+    for (auto const& ack : event.Acks) {
+        converted.Acks.push_back(ConvertAck(ack));
+    }
+    return converted;
+}
+
+TWriteSessionEvent::TReadyToAcceptEvent TWriteSessionImpl::ConvertReadyToAcceptEvent(NTopic::TWriteSessionEvent::TReadyToAcceptEvent const& event) {
+    return TWriteSessionEvent::TReadyToAcceptEvent{std::move(event.ContinuationToken)};
+}
+
+TSessionClosedEvent TWriteSessionImpl::ConvertSessionClosedEvent(NTopic::TSessionClosedEvent const& event) {
+    auto issues = event.GetIssues();
+    return TSessionClosedEvent(event.GetStatus(), std::move(issues));
+}
+
+TWriteSessionEvent::TEvent TWriteSessionImpl::ConvertEvent(NTopic::TWriteSessionEvent::TEvent& event) {
+    TWriteSessionEvent::TEvent converted;
+    std::visit(TOverloaded {
+        [this, &converted](NTopic::TWriteSessionEvent::TAcksEvent const& e) {
+            converted = ConvertAcksEvent(e);
         },
-        [&](NTopic::TWriteSessionEvent::TReadyToAcceptEvent& event) {
-            convertedEvent = TWriteSessionEvent::TReadyToAcceptEvent{std::move(event.ContinuationToken)};
+        [this, &converted](NTopic::TWriteSessionEvent::TReadyToAcceptEvent& e) {
+            converted = ConvertReadyToAcceptEvent(e);
         },
-        [&](NTopic::TSessionClosedEvent const& event) {
-            auto issues = event.GetIssues();
-            convertedEvent = TSessionClosedEvent(event.GetStatus(), std::move(issues));
+        [this, &converted](NTopic::TSessionClosedEvent const& e) {
+            converted = ConvertSessionClosedEvent(e);
         }
     }, event);
-    return convertedEvent;
+    return converted;
 }
 
 // Client method
@@ -82,6 +155,7 @@ TMaybe<TWriteSessionEvent::TEvent> TWriteSessionImpl::GetEvent(bool block) {
 TVector<TWriteSessionEvent::TEvent> TWriteSessionImpl::GetEvents(bool block, TMaybe<size_t> maxEventsCount) {
     auto events = FederatedWriteSession->GetEvents(block, maxEventsCount);
     TVector<TWriteSessionEvent::TEvent> converted;
+    converted.reserve(events.size());
     for (auto& e : events) {
         converted.push_back(ConvertEvent(e));
     }
@@ -120,19 +194,6 @@ TWriteSessionEvent::TWriteAck TWriteSessionImpl::ConvertAck(NTopic::TWriteSessio
 
 NThreading::TFuture<void> TWriteSessionImpl::WaitEvent() {
     return FederatedWriteSession->WaitEvent();
-}
-
-NTopic::ECodec ConvertCodecEnum(ECodec codec) {
-    switch (codec) {
-    case ECodec::RAW:
-        return NTopic::ECodec::RAW;
-    case ECodec::GZIP:
-        return NTopic::ECodec::GZIP;
-    case ECodec::LZOP:
-        return NTopic::ECodec::LZOP;
-    case ECodec::ZSTD:
-        return NTopic::ECodec::ZSTD;
-    }
 }
 
 // Client method.
