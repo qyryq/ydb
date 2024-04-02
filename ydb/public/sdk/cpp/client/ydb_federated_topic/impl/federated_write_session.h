@@ -11,7 +11,7 @@
 namespace NYdb::NFederatedTopic {
 
 class TFederatedWriteSessionImpl : public NTopic::TContinuationTokenIssuer,
-                                   public NTopic::TEnableSelfContext<TFederatedWriteSessionImpl> {
+                                   public NPersQueue::TEnableSelfContext<TFederatedWriteSessionImpl> {
     friend class TFederatedWriteSession;
     friend class TFederatedTopicClient::TImpl;
 
@@ -127,7 +127,7 @@ private:
 };
 
 class TFederatedWriteSession : public NTopic::IWriteSession,
-                               public NTopic::TContextOwner<TFederatedWriteSessionImpl> {
+                               public NPersQueue::TContextOwner<TFederatedWriteSessionImpl> {
     friend class TFederatedTopicClient::TImpl;
 
 public:

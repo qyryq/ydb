@@ -322,7 +322,7 @@ void TFederatedWriteSessionImpl::CloseImpl(NTopic::TSessionClosedEvent const& ev
         Subsession->Close(timeout);
     }
     ClientEventsQueue->Close(ev);
-    NTopic::Cancel(UpdateStateDelayContext);
+    NPersQueue::Cancel(UpdateStateDelayContext);
 }
 
 bool TFederatedWriteSessionImpl::Close(TDuration timeout) {
