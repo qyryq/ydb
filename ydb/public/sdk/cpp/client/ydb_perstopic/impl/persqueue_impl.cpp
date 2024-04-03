@@ -82,10 +82,13 @@ std::shared_ptr<TWriteSession> TPersQueueClient::TImpl::CreateTWriteSession(cons
     //      << " DbDriverState_->Database=" << DbDriverState_->Database
     //      << " settings.Path_=" << settings.Path_ << Endl;
     // Cerr << "XXXXX dbPath=" << database << " topic=" << topic << Endl;
-    auto clientSettings = FederatedTopicClientSettings;
-    clientSettings.Database(database);
     auto writerSettings = maybeSettings.GetOrElse(settings);
     writerSettings.Path(topic);
+    auto clientSettings = FederatedTopicClientSettings;
+    clientSettings.Database(database);
+    if (writerSettings.RetryPolicy_) {
+        clientSettings.RetryPolicy(writerSettings.RetryPolicy_);
+    }
     auto client = std::make_shared<NFederatedTopic::TFederatedTopicClient>(*Driver, clientSettings);
     return std::make_shared<TWriteSession>(client, writerSettings);
 }
