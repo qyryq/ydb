@@ -330,21 +330,12 @@ public:
     void Write(TContinuationToken&& continuationToken, TWriteMessage&& message);
 
     void Write(TContinuationToken&&, TStringBuf, TMaybe<ui64> seqNo = Nothing(),
-               TMaybe<TInstant> createTimestamp = Nothing()) {
-        Y_UNUSED(seqNo);
-        Y_UNUSED(createTimestamp);
-        Y_ABORT("Do not use this method");
-    };
+               TMaybe<TInstant> createTimestamp = Nothing());
 
     void WriteEncoded(TContinuationToken&& continuationToken, TWriteMessage&& message);
 
     void WriteEncoded(TContinuationToken&&, TStringBuf, ECodec, ui32,
-                      TMaybe<ui64> seqNo = Nothing(), TMaybe<TInstant> createTimestamp = Nothing()) {
-        Y_UNUSED(seqNo);
-        Y_UNUSED(createTimestamp);
-        Y_ABORT("Do not use this method");
-    }
-
+                      TMaybe<ui64> seqNo = Nothing(), TMaybe<TInstant> createTimestamp = Nothing());
 
     NThreading::TFuture<void> WaitEvent();
 

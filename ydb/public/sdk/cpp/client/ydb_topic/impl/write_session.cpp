@@ -37,27 +37,16 @@ NThreading::TFuture<void> TWriteSession::WaitEvent() {
 
 void TWriteSession::WriteEncoded(TContinuationToken&& token, TStringBuf data, ECodec codec, ui32 originalSize,
                                  TMaybe<ui64> seqNo, TMaybe<TInstant> createTimestamp) {
-    auto message = TWriteMessage::CompressedMessage(std::move(data), codec, originalSize);
-    if (seqNo.Defined())
-        message.SeqNo(*seqNo);
-    if (createTimestamp.Defined())
-        message.CreateTimestamp(*createTimestamp);
-    TryGetImpl()->WriteInternal(std::move(token), std::move(message));
+    TryGetImpl()->WriteEncoded(std::move(token), data, codec, originalSize, seqNo, createTimestamp);
 }
 
-void TWriteSession::WriteEncoded(TContinuationToken&& token, TWriteMessage&& message)
-{
+void TWriteSession::WriteEncoded(TContinuationToken&& token, TWriteMessage&& message) {
     TryGetImpl()->WriteInternal(std::move(token), std::move(message));
 }
 
 void TWriteSession::Write(TContinuationToken&& token, TStringBuf data, TMaybe<ui64> seqNo,
                           TMaybe<TInstant> createTimestamp) {
-    TWriteMessage message{std::move(data)};
-    if (seqNo.Defined())
-        message.SeqNo(*seqNo);
-    if (createTimestamp.Defined())
-        message.CreateTimestamp(*createTimestamp);
-    TryGetImpl()->WriteInternal(std::move(token), std::move(message));
+    TryGetImpl()->Write(std::move(token), data, seqNo, createTimestamp);
 }
 
 void TWriteSession::Write(TContinuationToken&& token, TWriteMessage&& message) {

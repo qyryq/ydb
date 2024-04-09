@@ -496,8 +496,32 @@ void TWriteSessionImpl::Write(TContinuationToken&& token, TWriteMessage&& messag
 }
 
 // Client method.
-void TWriteSessionImpl::WriteEncoded(TContinuationToken&& token, TWriteMessage&& message)
-{
+void TWriteSessionImpl::Write(TContinuationToken&& token, TStringBuf data, TMaybe<ui64> seqNo, TMaybe<TInstant> createTimestamp) {
+    TWriteMessage message{std::move(data)};
+    if (seqNo.Defined()) {
+        message.SeqNo(*seqNo);
+    }
+    if (createTimestamp.Defined()) {
+        message.CreateTimestamp(*createTimestamp);
+    }
+    WriteInternal(std::move(token), std::move(message));
+}
+
+// Client method.
+void TWriteSessionImpl::WriteEncoded(TContinuationToken&& token, TWriteMessage&& message) {
+    WriteInternal(std::move(token), std::move(message));
+}
+
+// Client method.
+void TWriteSessionImpl::WriteEncoded(TContinuationToken&& token, TStringBuf data, ECodec codec, ui32 originalSize,
+                                     TMaybe<ui64> seqNo, TMaybe<TInstant> createTimestamp) {
+    auto message = TWriteMessage::CompressedMessage(std::move(data), codec, originalSize);
+    if (seqNo.Defined()) {
+        message.SeqNo(*seqNo);
+    }
+    if (createTimestamp.Defined()) {
+        message.CreateTimestamp(*createTimestamp);
+    }
     WriteInternal(std::move(token), std::move(message));
 }
 
