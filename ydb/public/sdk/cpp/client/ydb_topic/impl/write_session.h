@@ -43,7 +43,6 @@ public:
 
     NThreading::TFuture<void> WaitEvent() override;
 
-    // Empty maybe - block till all work is done. Otherwise block at most at closeTimeout duration.
     bool Close(TDuration closeTimeout = TDuration::Max()) override;
 
     TWriterCounters::TPtr GetCounters() override {Y_ABORT("Unimplemented"); } //ToDo - unimplemented;

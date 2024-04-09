@@ -35,10 +35,9 @@ TWriteSessionImpl::TWriteSessionImpl(
     , PrevToken(DbDriverState->CredentialsProvider ? DbDriverState->CredentialsProvider->GetAuthInfo() : "")
     , InitSeqNoPromise(NThreading::NewPromise<ui64>())
     , WakeupInterval(
-            Settings.BatchFlushInterval_.GetOrElse(TDuration::Zero()) ?
-                std::min(Settings.BatchFlushInterval_.GetOrElse(TDuration::Seconds(1)) / 5, TDuration::MilliSeconds(100))
-                :
-                TDuration::MilliSeconds(100)
+        Settings.BatchFlushInterval_.GetOrElse(TDuration::Zero())
+            ? std::min(*Settings.BatchFlushInterval_ / 5, TDuration::MilliSeconds(100))
+            : TDuration::MilliSeconds(100)
     )
 {
     if (!Settings.RetryPolicy_) {

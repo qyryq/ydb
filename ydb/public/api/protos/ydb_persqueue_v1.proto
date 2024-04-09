@@ -299,7 +299,7 @@ message StreamingReadClientMessage {
         // Read data only after this timestamp from all topics.
         int64 start_from_written_at_ms = 5;
 
-        // Maximum block format version supported by the client. Server will asses this parameter and return actual data blocks version in
+        // Maximum block format version supported by the client. Server will assess this parameter and return actual data blocks version in
         // StreamingReadServerMessage.InitResponse.block_format_version_by_topic (and StreamingReadServerMessage.AddTopicResponse.block_format_version)
         // or error if client will not be able to read data.
         int64 max_supported_format_version = 6;
