@@ -443,7 +443,6 @@ private:
     std::shared_ptr<TServerMessage> ServerMessage; // Server message to write server response to.
 
     TString SessionId;
-    IExecutor::TPtr Executor;
     IExecutor::TPtr CompressionExecutor;
     size_t MemoryUsage = 0; //!< Estimated amount of memory used
     bool FirstTokenSent = false;

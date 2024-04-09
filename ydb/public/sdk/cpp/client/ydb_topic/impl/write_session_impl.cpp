@@ -368,15 +368,11 @@ void TWriteSessionImpl::InitWriter() { // No Lock, very initial start - no race 
             ThrowFatalError("ProducerId != MessageGroupId scenario is currently not supported");
     }
     CompressionExecutor = Settings.CompressionExecutor_;
-    IExecutor::TPtr executor;
-    executor = CreateSyncExecutor();
-    executor->Start();
-    Executor = std::move(executor);
 
     Settings.CompressionExecutor_->Start();
     Settings.EventHandlers_.HandlersExecutor_->Start();
-
 }
+
 // Client method
 NThreading::TFuture<ui64> TWriteSessionImpl::GetInitSeqNo() {
     if (!Settings.DeduplicationEnabled_.GetOrElse(true)) {
