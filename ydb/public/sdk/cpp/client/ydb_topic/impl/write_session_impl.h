@@ -241,7 +241,6 @@ private:
         mutable TVector<TStringBuf> OriginalDataRefs;
         mutable TBuffer Data;
         bool Compressed = false;
-        mutable bool Valid = true;
 
         TBlock& operator=(TBlock&&) = default;
         TBlock(TBlock&&) = default;

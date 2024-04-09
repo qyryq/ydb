@@ -1085,16 +1085,15 @@ TBuffer CompressBuffer(std::shared_ptr<TTopicClient::TImpl> client, TVector<TStr
 }
 
 // May call OnCompressed with sync executor. No external lock.
-void TWriteSessionImpl::CompressImpl(TBlock&& block_) {
+void TWriteSessionImpl::CompressImpl(TBlock&& block) {
     Y_ABORT_UNLESS(Lock.IsLocked());
 
     if (Aborting) {
         return;
     }
-    Y_ABORT_UNLESS(block_.Valid);
 
     std::shared_ptr<TBlock> blockPtr(std::make_shared<TBlock>());
-    blockPtr->Move(block_);
+    blockPtr->Move(block);
     auto lambda = [cbContext = SelfContext,
                    codec = Settings.Codec_,
                    level = Settings.CompressionLevel_,
@@ -1136,7 +1135,6 @@ TMemoryUsageChange TWriteSessionImpl::OnCompressedImpl(TBlock&& block) {
     Y_ABORT_UNLESS(Lock.IsLocked());
 
     UpdateTimedCountersImpl();
-    Y_ABORT_UNLESS(block.Valid);
     auto memoryUsage = OnMemoryUsageChangedImpl(static_cast<i64>(block.Data.size()) - block.OriginalMemoryUsage);
     (*Counters->BytesInflightUncompressed) -= block.OriginalSize;
     (*Counters->BytesInflightCompressed) += block.Data.size();
@@ -1318,7 +1316,6 @@ void TWriteSessionImpl::SendImpl() {
         // Send blocks while we can without messages reordering.
         while (IsReadyToSendNextImpl() && clientMessage.ByteSizeLong() < GetMaxGrpcMessageSize()) {
             const auto& block = PackedMessagesToSend.top();
-            Y_ABORT_UNLESS(block.Valid);
             if (writeRequest->messages_size() > 0 && prevCodec != block.CodecID) {
                 break;
             }
