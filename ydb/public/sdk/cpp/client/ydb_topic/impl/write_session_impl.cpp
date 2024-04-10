@@ -1191,8 +1191,12 @@ void TWriteSessionImpl::WriteBatchImpl() {
     Y_ABORT_UNLESS(CurrentBatch.Messages.size() <= MaxBlockMessageCount);
 
     const bool skipCompression = Settings.Codec_ == ECodec::RAW || CurrentBatch.HasCodec();
+
+    // NOTE(qyryq) WriteBatchImpl is only called from FlushWriteIfRequiredImpl,
+    // where the Acquire method has already been called. And as we're under lock,
+    // it's impossible for CurrentBatch to change. Looks like MessagesAcquired never changes here.
     if (!skipCompression && Settings.CompressionExecutor_->IsAsync()) {
-        MessagesAcquired += static_cast<ui64>(CurrentBatch.Acquire());
+        MessagesAcquired += CurrentBatch.Acquire();
     }
 
     for (size_t i = 0; i != CurrentBatch.Messages.size();) {
@@ -1234,7 +1238,9 @@ void TWriteSessionImpl::WriteBatchImpl() {
             CompressImpl(std::move(block));
         }
     }
+
     CurrentBatch.Reset();
+
     if (skipCompression) {
         SendImpl();
     }
@@ -1256,6 +1262,7 @@ bool TWriteSessionImpl::IsReadyToSendNextImpl() const {
     if (PackedMessagesToSend.empty()) {
         return false;
     }
+
     Y_ABORT_UNLESS(!OriginalMessagesToSend.empty(), "There are packed messages but no original messages");
     Y_ABORT_UNLESS(OriginalMessagesToSend.front().Id <= PackedMessagesToSend.top().Offset, "Lost original message(s)");
 

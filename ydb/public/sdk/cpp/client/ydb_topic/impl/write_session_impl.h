@@ -236,6 +236,8 @@ private:
         ECodec Codec = ECodec::RAW;
         mutable TVector<TStringBuf> OriginalDataRefs;
         mutable TBuffer Data;
+
+        // Set to true only when the block's data has been compressed by the session.
         bool Compressed = false;
 
         TBlock& operator=(TBlock&&) = default;
@@ -434,8 +436,13 @@ private:
 
     TMessageBatch CurrentBatch;
 
+    // OriginalMessagesToSend.front() is the next message we have to send.
     std::queue<TOriginalMessage> OriginalMessagesToSend;
+    // PackedMessagesToSend.top() is the next message we have to send,
+    // if OriginalMessagesToSend.front().Id == PackedMessagesToSend.top().Offset.
+    // It might be the case the equality is false, if some messages are being compressed at the moment.
     std::priority_queue<TBlock, std::vector<TBlock>, Greater> PackedMessagesToSend;
+
     //! Messages that are sent but yet not acknowledged
     std::queue<TOriginalMessage> SentOriginalMessages;
     std::queue<TBlock> SentPackedMessage;
