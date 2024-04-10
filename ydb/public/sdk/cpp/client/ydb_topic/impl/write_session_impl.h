@@ -234,7 +234,6 @@ private:
     struct TBlock {
         size_t Offset = 0; //!< First message sequence number in the block
         size_t MessageCount = 0;
-        size_t PartNumber = 0;
         size_t OriginalSize = 0;
         size_t OriginalMemoryUsage = 0;
         ui32 CodecID = static_cast<ui32>(ECodec::RAW);
@@ -250,7 +249,6 @@ private:
         void Move(const TBlock& rhs) {
             Offset = rhs.Offset;
             MessageCount = rhs.MessageCount;
-            PartNumber = rhs.PartNumber;
             OriginalSize = rhs.OriginalSize;
             OriginalMemoryUsage = rhs.OriginalMemoryUsage;
             CodecID = rhs.CodecID;
