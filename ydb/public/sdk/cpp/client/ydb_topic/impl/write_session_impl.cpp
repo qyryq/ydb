@@ -466,18 +466,11 @@ NThreading::TFuture<void> TWriteSessionImpl::WaitEvent() {
 }
 
 void TWriteSessionImpl::WriteInternal(TContinuationToken&&, TWriteMessage&& message) {
-    TInstant createdAtValue = message.CreateTimestamp_.Defined() ? *message.CreateTimestamp_ : TInstant::Now();
     bool readyToAccept = false;
-    size_t bufferSize = message.Data.size();
     with_lock(Lock) {
-        CurrentBatch.Add(
-                GetNextIdImpl(message.SeqNo_), createdAtValue, message.Data, message.Codec, message.OriginalSize,
-                message.MessageMeta_,
-                message.GetTxPtr()
-        );
-
+        readyToAccept = OnMemoryUsageChangedImpl(message.Data.size()).NowOk;
+        CurrentBatch.Add(GetNextIdImpl(message.SeqNo_), std::move(message));
         FlushWriteIfRequiredImpl();
-        readyToAccept = OnMemoryUsageChangedImpl(bufferSize).NowOk;
     }
     if (readyToAccept) {
         EventsQueue->PushEvent(TWriteSessionEvent::TReadyToAcceptEvent{IssueContinuationToken()});

@@ -192,14 +192,11 @@ private:
         TInstant StartedAt = TInstant::Zero();
         bool Acquired = false;
 
-        void Add(ui64 id, const TInstant& createdAt, TStringBuf data, TMaybe<ECodec> codec, ui32 originalSize,
-                 const TVector<std::pair<TString, TString>>& messageMeta,
-                 const NTable::TTransaction* tx) {
-            if (StartedAt == TInstant::Zero())
-                StartedAt = TInstant::Now();
-            CurrentSize += codec ? originalSize : data.size();
-            Messages.emplace_back(id, createdAt, data, codec, originalSize, messageMeta, tx);
+        void Add(ui64 id, TWriteMessage&& m) {
             Acquired = false;
+            CurrentSize += m.Codec ? m.OriginalSize : m.Data.size();
+            StartedAt = m.CreateTimestamp_.GetOrElse(TInstant::Now());
+            Messages.emplace_back(id, StartedAt, m.Data, m.Codec, m.OriginalSize, std::move(m.MessageMeta_), m.GetTxPtr());
         }
 
         bool HasCodec() const {
