@@ -207,12 +207,14 @@ private:
         }
 
         bool Acquire() {
-            if (Acquired || Messages.empty())
+            if (Acquired || Messages.empty()) {
                 return false;
-            auto currSize = Data.size();
-            Data.Append(Messages.back().DataRef.data(), Messages.back().DataRef.size());
-            Messages.back().DataRef = TStringBuf(Data.data() + currSize, Data.size() - currSize);
+            }
             Acquired = true;
+            auto prevSize = Data.size();
+            auto& ref = Messages.back().DataRef;
+            Data.Append(ref.data(), ref.size());
+            ref = TStringBuf(Data.data() + prevSize, ref.size());
             return true;
         }
 
@@ -221,10 +223,10 @@ private:
         }
 
         void Reset() {
+            Acquired = false;
             StartedAt = TInstant::Zero();
             Messages.clear();
             Data.Clear();
-            Acquired = false;
             CurrentSize = 0;
         }
     };
