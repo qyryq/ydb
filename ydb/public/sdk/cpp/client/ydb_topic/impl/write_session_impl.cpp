@@ -1086,7 +1086,7 @@ void TWriteSessionImpl::CompressImpl(TBlock&& block) {
         return;
     }
 
-    std::shared_ptr<TBlock> blockPtr(std::make_shared<TBlock>());
+    auto blockPtr = std::make_shared<TBlock>();
     blockPtr->Move(block);
     auto lambda = [cbContext = SelfContext,
                    codec = Settings.Codec_,
@@ -1160,8 +1160,9 @@ void TWriteSessionImpl::ResetForRetryImpl() {
         OriginalMessagesToSend.emplace(std::move(freshOriginalMessagesToSend.front()));
         freshOriginalMessagesToSend.pop();
     }
-    if (!OriginalMessagesToSend.empty() && OriginalMessagesToSend.front().Id < minId)
+    if (!OriginalMessagesToSend.empty() && OriginalMessagesToSend.front().Id < minId) {
         minId = OriginalMessagesToSend.front().Id;
+    }
     MinUnsentId = minId;
     Y_ABORT_UNLESS(PackedMessagesToSend.size() == totalPackedMessages);
     Y_ABORT_UNLESS(OriginalMessagesToSend.size() == totalOriginalMessages);
@@ -1203,7 +1204,7 @@ size_t TWriteSessionImpl::WriteBatchImpl() {
 
     size_t size = 0;
     for (size_t i = 0; i != CurrentBatch.Messages.size();) {
-        TBlock block{};
+        TBlock block;
         for (; block.OriginalSize < MaxBlockSize && i != CurrentBatch.Messages.size(); ++i) {
             auto& currMessage = CurrentBatch.Messages[i];
 
@@ -1266,15 +1267,16 @@ bool TWriteSessionImpl::IsReadyToSendNextImpl() const {
     if (!SessionEstablished) {
         return false;
     }
-    if (Aborting)
+    if (Aborting) {
         return false;
+    }
     if (PackedMessagesToSend.empty()) {
         return false;
     }
     Y_ABORT_UNLESS(!OriginalMessagesToSend.empty(), "There are packed messages but no original messages");
     Y_ABORT_UNLESS(OriginalMessagesToSend.front().Id <= PackedMessagesToSend.top().Offset, "Lost original message(s)");
 
-    return PackedMessagesToSend.top().Offset == OriginalMessagesToSend.front().Id;
+    return OriginalMessagesToSend.front().Id == PackedMessagesToSend.top().Offset;
 }
 
 
@@ -1413,8 +1415,7 @@ void TWriteSessionImpl::HandleWakeUpImpl() {
     if (AtomicGet(Aborting)) {
         return;
     }
-    auto callback = [cbContext = SelfContext] (bool ok)
-    {
+    auto callback = [cbContext = SelfContext] (bool ok) {
         if (!ok) {
             return;
         }

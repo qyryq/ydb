@@ -204,7 +204,7 @@ private:
         }
 
         bool HasCodec() const {
-            return Messages.empty() ? false : Messages.front().Codec.Defined();
+            return !Messages.empty() && Messages.front().Codec.Defined();
         }
 
         bool Acquire() {
