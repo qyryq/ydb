@@ -353,7 +353,7 @@ private:
     void WriteInternal(TContinuationToken&& continuationToken, TWriteMessage&& message);
 
     void FlushWriteIfRequiredImpl();
-    size_t WriteBatchImpl();
+    void WriteBatchImpl();
     void Start(const TDuration& delay);
     void InitWriter();
 

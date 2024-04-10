@@ -1179,7 +1179,7 @@ void TWriteSessionImpl::FlushWriteIfRequiredImpl() {
     }
 }
 
-size_t TWriteSessionImpl::WriteBatchImpl() {
+void TWriteSessionImpl::WriteBatchImpl() {
     Y_ABORT_UNLESS(Lock.IsLocked());
 
     LOG_LAZY(DbDriverState->Log,
@@ -1195,7 +1195,6 @@ size_t TWriteSessionImpl::WriteBatchImpl() {
         MessagesAcquired += static_cast<ui64>(CurrentBatch.Acquire());
     }
 
-    size_t total_size = 0;
     for (size_t i = 0; i != CurrentBatch.Messages.size();) {
         TBlock block;
         for (; block.OriginalSize < MaxBlockSize && i != CurrentBatch.Messages.size(); ++i) {
@@ -1209,7 +1208,6 @@ size_t TWriteSessionImpl::WriteBatchImpl() {
             Counters->MessagesInflight->Inc();
 
             auto size = message.DataRef.size();
-            total_size += size;
             block.OriginalSize += size;
             Counters->BytesInflightUncompressed->Add(size);
 
@@ -1240,7 +1238,6 @@ size_t TWriteSessionImpl::WriteBatchImpl() {
     if (skipCompression) {
         SendImpl();
     }
-    return total_size;
 }
 
 size_t GetMaxGrpcMessageSize() {
