@@ -1297,13 +1297,40 @@ void TWriteSessionImpl::UpdateTokenIfNeededImpl() {
 void TWriteSessionImpl::SendImpl() {
     Y_ABORT_UNLESS(Lock.IsLocked());
 
+    auto nextMessageSize = [&]() -> size_t {
+        // Return an approximate number of bytes the request size will grow by, if we add another message to the request.
+        // It takes into account ONLY the length of data, metadata and transaction IDs.
+        // To get a more precise result, read about protobuf encoding at https://protobuf.dev/programming-guides/encoding/.
+
+        size_t size = 0;
+
+        auto const& message = OriginalMessagesToSend.front();
+        for (auto& [k, v] : message.MessageMeta) {
+            size += k.size() + v.size();
+        }
+        if (message.Tx) {
+            size += message.Tx->GetId().size() + message.Tx->GetSession().GetId().size();
+        }
+
+        auto const& block = PackedMessagesToSend.top();
+        if (block.Compressed) {
+            size += block.Data.size();
+        } else {
+            for (auto& buffer: block.OriginalDataRefs) {
+                size += buffer.size();
+            }
+        }
+
+        return size;
+    };
+
     // External cycle splits ready blocks into multiple gRPC messages. Current gRPC message size hard limit is 64MiB.
     while (IsReadyToSendNextImpl()) {
         TClientMessage clientMessage;
         auto* writeRequest = clientMessage.mutable_write_request();
         ECodec prevCodec = ECodec::RAW;
         // Send blocks while we can without messages reordering.
-        while (IsReadyToSendNextImpl() && clientMessage.ByteSizeLong() < GetMaxGrpcMessageSize()) {
+        while (IsReadyToSendNextImpl() && (writeRequest->messages_size() == 0 || clientMessage.ByteSizeLong() + nextMessageSize() < GetMaxGrpcMessageSize())) {
             const auto& block = PackedMessagesToSend.top();
             if (writeRequest->messages_size() > 0 && prevCodec != block.Codec) {
                 break;
