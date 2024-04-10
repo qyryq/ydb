@@ -1165,18 +1165,21 @@ void TWriteSessionImpl::ResetForRetryImpl() {
 void TWriteSessionImpl::FlushWriteIfRequiredImpl() {
     Y_ABORT_UNLESS(Lock.IsLocked());
 
-    if (!CurrentBatch.Empty()) {
-        MessagesAcquired += static_cast<ui64>(CurrentBatch.Acquire());
-        if (TInstant::Now() - CurrentBatch.StartedAt >= Settings.BatchFlushInterval_.GetOrElse(TDuration::Zero())
-            || CurrentBatch.CurrentSize >= Settings.BatchFlushSizeBytes_.GetOrElse(0)
-            || CurrentBatch.CurrentSize >= MaxBlockSize
-            || CurrentBatch.Messages.size() >= MaxBlockMessageCount
-            || CurrentBatch.HasCodec()
-        ) {
-            WriteBatchImpl();
-            return;
-        }
+    if (CurrentBatch.Empty()) {
+        return;
     }
+
+    MessagesAcquired += CurrentBatch.Acquire();
+
+    WriteBatchImpl();
+
+    // TODO(qyryq) Currently WriteBatchImpl is called unconditially, but it should look roughly this way:
+    //     bool timeToFlush = TInstant::Now() - CurrentBatch.StartedAt >= Settings.BatchFlushInterval_.GetOrElse(TDuration::Zero());
+    //     bool enoughBytes = CurrentBatch.CurrentSize >= Settings.BatchFlushSizeBytes_.GetOrElse(0);
+    //     if (timeToFlush || enoughBytes) {
+    //         WriteBatchImpl();
+    //     }
+    // For this to work we need to update WriteBatchImpl and SendImpl.
 }
 
 void TWriteSessionImpl::WriteBatchImpl() {
@@ -1199,9 +1202,9 @@ void TWriteSessionImpl::WriteBatchImpl() {
         MessagesAcquired += CurrentBatch.Acquire();
     }
 
-    for (size_t i = 0; i != CurrentBatch.Messages.size();) {
+    for (size_t i = 0; i < CurrentBatch.Messages.size();) {
         TBlock block;
-        for (; block.OriginalSize < MaxBlockSize && i != CurrentBatch.Messages.size(); ++i) {
+        for (; block.OriginalSize < MaxBlockSize && i < CurrentBatch.Messages.size(); ++i) {
             auto& message = CurrentBatch.Messages[i];
 
             if (!block.MessageCount) {
@@ -1308,7 +1311,7 @@ void TWriteSessionImpl::SendImpl() {
             prevCodec = block.Codec;
             writeRequest->set_codec(static_cast<i32>(block.Codec));
             Y_ABORT_UNLESS(block.MessageCount == 1);
-            for (size_t i = 0; i != block.MessageCount; ++i) {
+            for (size_t i = 0; i < block.MessageCount; ++i) {
                 Y_ABORT_UNLESS(!OriginalMessagesToSend.empty());
 
                 auto& message = OriginalMessagesToSend.front();
