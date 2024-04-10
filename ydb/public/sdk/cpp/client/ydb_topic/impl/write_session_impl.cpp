@@ -418,39 +418,33 @@ ui64 TWriteSessionImpl::GetSeqNoImpl(ui64 id) {
 }
 
 ui64 TWriteSessionImpl::GetNextIdImpl(const TMaybe<ui64>& seqNo) {
-
     Y_ABORT_UNLESS(Lock.IsLocked());
 
-    ui64 id = ++NextId;
     if (!AutoSeqNoMode.Defined()) {
         AutoSeqNoMode = !seqNo.Defined();
     }
+
     if (seqNo.Defined()) {
         if (!Settings.DeduplicationEnabled_.GetOrElse(true)) {
-            LOG_LAZY(DbDriverState->Log, TLOG_ERR, LogPrefix() << "SeqNo is provided on write when deduplication is disabled");
-            ThrowFatalError("Cannot provide SeqNo on Write() when deduplication is disabled");
+            TString error("SeqNo is provided on write when deduplication is disabled");
+            LOG_LAZY(DbDriverState->Log, TLOG_ERR, LogPrefix() << error);
+            ThrowFatalError(error);
         }
         if (*AutoSeqNoMode) {
-            LOG_LAZY(DbDriverState->Log,
-                TLOG_ERR,
-                LogPrefix() << "Cannot call write() with defined SeqNo on WriteSession running in auto-seqNo mode"
-            );
-            ThrowFatalError(
-                "Cannot call write() with defined SeqNo on WriteSession running in auto-seqNo mode"
-            );
-        } else {
-            id = *seqNo;
+            TString error("Cannot call write() with defined SeqNo on WriteSession running in auto-seqNo mode");
+            LOG_LAZY(DbDriverState->Log, TLOG_ERR, LogPrefix() << error);
+            ThrowFatalError(error);
         }
-    } else if (!(*AutoSeqNoMode)) {
-        LOG_LAZY(DbDriverState->Log,
-            TLOG_ERR,
-            LogPrefix() << "Cannot call write() without defined SeqNo on WriteSession running in manual-seqNo mode"
-        );
-        ThrowFatalError(
-            "Cannot call write() without defined SeqNo on WriteSession running in manual-seqNo mode"
-        );
+        return *seqNo;
     }
-    return id;
+
+    if (!(*AutoSeqNoMode)) {
+        TString error("Cannot call write() without defined SeqNo on WriteSession running in manual-seqNo mode");
+        LOG_LAZY(DbDriverState->Log, TLOG_ERR, LogPrefix() << error);
+        ThrowFatalError(error);
+    }
+
+    return ++NextId;
 }
 
 inline void TWriteSessionImpl::CheckHandleResultImpl(THandleResult& result) {
