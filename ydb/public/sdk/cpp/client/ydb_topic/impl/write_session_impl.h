@@ -191,7 +191,6 @@ private:
         ui64 CurrentSize = 0;
         TInstant StartedAt = TInstant::Zero();
         bool Acquired = false;
-        bool FlushRequested = false;
 
         void Add(ui64 id, const TInstant& createdAt, TStringBuf data, TMaybe<ECodec> codec, ui32 originalSize,
                  const TVector<std::pair<TString, TString>>& messageMeta,
@@ -227,7 +226,6 @@ private:
             Data.Clear();
             Acquired = false;
             CurrentSize = 0;
-            FlushRequested = false;
         }
     };
 
