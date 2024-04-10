@@ -1195,48 +1195,41 @@ size_t TWriteSessionImpl::WriteBatchImpl() {
         MessagesAcquired += static_cast<ui64>(CurrentBatch.Acquire());
     }
 
-    size_t size = 0;
+    size_t total_size = 0;
     for (size_t i = 0; i != CurrentBatch.Messages.size();) {
         TBlock block;
         for (; block.OriginalSize < MaxBlockSize && i != CurrentBatch.Messages.size(); ++i) {
-            auto& currMessage = CurrentBatch.Messages[i];
-
-            // If MaxBlockSize or MaxBlockMessageCount values are ever changed from infinity and 1 correspondingly,
-            // create a new block, if the existing one is non-empty AND (adding another message will overflow it OR
-            //                                                           its codec is different from the codec of the next message).
-
-            auto id = currMessage.Id;
-            auto createTs = currMessage.CreatedAt;
+            auto& message = CurrentBatch.Messages[i];
 
             if (!block.MessageCount) {
-                block.Offset = id;
+                block.Offset = message.Id;
             }
 
-            block.MessageCount += 1;
-            const auto& datum = currMessage.DataRef;
-            block.OriginalSize += datum.size();
+            ++block.MessageCount;
+            Counters->MessagesInflight->Inc();
+
+            auto size = message.DataRef.size();
+            total_size += size;
+            block.OriginalSize += size;
+            Counters->BytesInflightUncompressed->Add(size);
+
             block.OriginalMemoryUsage = CurrentBatch.Data.size();
-            block.OriginalDataRefs.emplace_back(datum);
-            if (CurrentBatch.Messages[i].Codec.Defined()) {
+            block.OriginalDataRefs.emplace_back(message.DataRef);
+
+            if (message.Codec.Defined()) {
                 Y_ABORT_UNLESS(CurrentBatch.Messages.size() == 1);
-                block.Codec = *currMessage.Codec;
-                block.OriginalSize = currMessage.OriginalSize;
+                block.Codec = *message.Codec;
+                block.OriginalSize = message.OriginalSize;
                 block.Compressed = false;
             }
-            size += datum.size();
+
             UpdateTimedCountersImpl();
-            Counters->BytesInflightUncompressed->Add(datum.size());
-            Counters->MessagesInflight->Inc();
-            if (!currMessage.MessageMeta.empty()) {
-                OriginalMessagesToSend.emplace(id, createTs, datum.size(),
-                                               std::move(currMessage.MessageMeta),
-                                               currMessage.Tx);
-            } else {
-                OriginalMessagesToSend.emplace(id, createTs, datum.size(),
-                                               currMessage.Tx);
-            }
+
+            OriginalMessagesToSend.emplace(message.Id, message.CreatedAt, size, std::move(message.MessageMeta), message.Tx);
         }
+
         block.Data = std::move(CurrentBatch.Data);
+
         if (skipCompression) {
             PackedMessagesToSend.emplace(std::move(block));
         } else {
@@ -1247,7 +1240,7 @@ size_t TWriteSessionImpl::WriteBatchImpl() {
     if (skipCompression) {
         SendImpl();
     }
-    return size;
+    return total_size;
 }
 
 size_t GetMaxGrpcMessageSize() {
