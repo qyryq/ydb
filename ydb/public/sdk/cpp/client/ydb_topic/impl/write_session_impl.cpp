@@ -525,7 +525,7 @@ void TWriteSessionImpl::WriteEncoded(TContinuationToken&& token, TStringBuf data
 TWriteSessionImpl::THandleResult TWriteSessionImpl::OnErrorImpl(NYdb::TPlainStatus&& status) {
     Y_ABORT_UNLESS(Lock.IsLocked());
 
-    (*Counters->Errors)++;
+    Counters->Errors->Inc();
     auto result = RestartImpl(status);
     if (result.DoStop) {
         CloseImpl(status.Status, std::move(status.Issues));
@@ -1014,28 +1014,28 @@ bool TWriteSessionImpl::CleanupOnAcknowledged(ui64 id) {
             size = front.Data.size();
         }
 
-        (*Counters->MessagesWritten) += front.MessageCount;
-        (*Counters->MessagesInflight) -= front.MessageCount;
-        (*Counters->BytesWritten) += front.OriginalSize;
+        Counters->MessagesWritten->Add(front.MessageCount);
+        Counters->MessagesInflight->Add(front.MessageCount);
+        Counters->BytesWritten->Add(front.OriginalSize);
 
         SentPackedMessage.pop();
     } else {
         size = sentFront.Size;
-        (*Counters->BytesWritten) += sentFront.Size;
-        (*Counters->MessagesWritten)++;
-        (*Counters->MessagesInflight)--;
+        Counters->BytesWritten->Add(sentFront.Size);
+        Counters->MessagesWritten->Inc();
+        Counters->MessagesInflight->Dec();
     }
 
-    (*Counters->BytesInflightCompressed) -= compressedSize;
-    (*Counters->BytesWrittenCompressed) += compressedSize;
-    (*Counters->BytesInflightUncompressed) -= size;
+    Counters->BytesInflightCompressed->Sub(compressedSize);
+    Counters->BytesWrittenCompressed->Add(compressedSize);
+    Counters->BytesInflightUncompressed->Sub(size);
 
     Y_ABORT_UNLESS(Counters->BytesInflightCompressed->Val() >= 0);
     Y_ABORT_UNLESS(Counters->BytesInflightUncompressed->Val() >= 0);
 
     Y_ABORT_UNLESS(sentFront.Id == id);
 
-    (*Counters->BytesInflightTotal) = MemoryUsage;
+    Counters->BytesInflightTotal->Set(MemoryUsage);
     SentOriginalMessages.pop();
     return result;
 }
@@ -1130,8 +1130,8 @@ TMemoryUsageChange TWriteSessionImpl::OnCompressedImpl(TBlock&& block) {
 
     UpdateTimedCountersImpl();
     auto memoryUsage = OnMemoryUsageChangedImpl(static_cast<i64>(block.Data.size()) - block.OriginalMemoryUsage);
-    (*Counters->BytesInflightUncompressed) -= block.OriginalSize;
-    (*Counters->BytesInflightCompressed) += block.Data.size();
+    Counters->BytesInflightUncompressed->Sub(block.OriginalSize);
+    Counters->BytesInflightCompressed->Add(block.Data.size());
 
     PackedMessagesToSend.emplace(std::move(block));
     SendImpl();
@@ -1231,8 +1231,8 @@ size_t TWriteSessionImpl::WriteBatchImpl() {
             }
             size += datum.size();
             UpdateTimedCountersImpl();
-            (*Counters->BytesInflightUncompressed) += datum.size();
-            (*Counters->MessagesInflight)++;
+            Counters->BytesInflightUncompressed->Add(datum.size());
+            Counters->MessagesInflight->Inc();
             if (!currMessage.MessageMeta.empty()) {
                 OriginalMessagesToSend.emplace(id, createTs, datum.size(),
                                                std::move(currMessage.MessageMeta),
@@ -1446,7 +1446,7 @@ void TWriteSessionImpl::UpdateTimedCountersImpl() {
     Counters->UncompressedBytesInflightUsageByTime->Collect(*Counters->BytesInflightUncompressed * percent, delta);
     Counters->CompressedBytesInflightUsageByTime->Collect(*Counters->BytesInflightCompressed * percent, delta);
 
-    *Counters->CurrentSessionLifetimeMs = (TInstant::Now() - SessionStartedTs).MilliSeconds();
+    Counters->CurrentSessionLifetimeMs->Set((TInstant::Now() - SessionStartedTs).MilliSeconds());
     LastCountersUpdateTs = now;
     if (LastCountersLogTs == TInstant::Zero() || TInstant::Now() - LastCountersLogTs > TDuration::Seconds(60)) {
         LastCountersLogTs = TInstant::Now();
