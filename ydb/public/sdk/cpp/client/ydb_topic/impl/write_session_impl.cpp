@@ -1102,7 +1102,7 @@ void TWriteSessionImpl::CompressImpl(TBlock&& block) {
         Y_ABORT_UNLESS(!compressedData.Empty());
         blockPtr->Data = std::move(compressedData);
         blockPtr->Compressed = true;
-        blockPtr->CodecID = static_cast<ui32>(codec);
+        blockPtr->Codec = codec;
         if (auto self = cbContext->LockShared()) {
             self->OnCompressed(std::move(*blockPtr), isSyncCompression);
         }
@@ -1226,7 +1226,7 @@ size_t TWriteSessionImpl::WriteBatchImpl() {
             block.OriginalDataRefs.emplace_back(datum);
             if (CurrentBatch.Messages[i].Codec.Defined()) {
                 Y_ABORT_UNLESS(CurrentBatch.Messages.size() == 1);
-                block.CodecID = static_cast<ui32>(*currMessage.Codec);
+                block.Codec = *currMessage.Codec;
                 block.OriginalSize = currMessage.OriginalSize;
                 block.Compressed = false;
             }
@@ -1308,15 +1308,15 @@ void TWriteSessionImpl::SendImpl() {
     while (IsReadyToSendNextImpl()) {
         TClientMessage clientMessage;
         auto* writeRequest = clientMessage.mutable_write_request();
-        ui32 prevCodec = 0;
+        ECodec prevCodec = ECodec::RAW;
         // Send blocks while we can without messages reordering.
         while (IsReadyToSendNextImpl() && clientMessage.ByteSizeLong() < GetMaxGrpcMessageSize()) {
             const auto& block = PackedMessagesToSend.top();
-            if (writeRequest->messages_size() > 0 && prevCodec != block.CodecID) {
+            if (writeRequest->messages_size() > 0 && prevCodec != block.Codec) {
                 break;
             }
-            prevCodec = block.CodecID;
-            writeRequest->set_codec(static_cast<i32>(block.CodecID));
+            prevCodec = block.Codec;
+            writeRequest->set_codec(static_cast<i32>(block.Codec));
             Y_ABORT_UNLESS(block.MessageCount == 1);
             for (size_t i = 0; i != block.MessageCount; ++i) {
                 Y_ABORT_UNLESS(!OriginalMessagesToSend.empty());

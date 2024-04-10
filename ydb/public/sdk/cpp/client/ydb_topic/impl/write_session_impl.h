@@ -236,7 +236,7 @@ private:
         size_t MessageCount = 0;
         size_t OriginalSize = 0;
         size_t OriginalMemoryUsage = 0;
-        ui32 CodecID = static_cast<ui32>(ECodec::RAW);
+        ECodec Codec = ECodec::RAW;
         mutable TVector<TStringBuf> OriginalDataRefs;
         mutable TBuffer Data;
         bool Compressed = false;
@@ -251,7 +251,7 @@ private:
             MessageCount = rhs.MessageCount;
             OriginalSize = rhs.OriginalSize;
             OriginalMemoryUsage = rhs.OriginalMemoryUsage;
-            CodecID = rhs.CodecID;
+            Codec = rhs.Codec;
             OriginalDataRefs.swap(rhs.OriginalDataRefs);
             Data.Swap(rhs.Data);
             Compressed = rhs.Compressed;
