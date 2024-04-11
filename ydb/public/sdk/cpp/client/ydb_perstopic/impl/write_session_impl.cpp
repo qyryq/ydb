@@ -28,10 +28,6 @@ NThreading::TFuture<ui64> TWriteSessionImpl::GetInitSeqNo() {
     return FederatedWriteSession->GetInitSeqNo();
 }
 
-TString DebugString(const TWriteSessionEvent::TEvent& event) {
-    return std::visit([](const auto& ev) { return ev.DebugString(); }, event);
-}
-
 NFederatedTopic::TFederatedWriteSessionSettings TWriteSessionImpl::ConvertWriteSessionSettings(TWriteSessionSettings const& pq) {
     NFederatedTopic::TFederatedWriteSessionSettings federated;
     federated.Path(pq.Path_);
@@ -48,12 +44,7 @@ NFederatedTopic::TFederatedWriteSessionSettings TWriteSessionImpl::ConvertWriteS
     federated.Counters(pq.Counters_);
     federated.CompressionExecutor(pq.CompressionExecutor_);
     if (auto h = pq.EventHandlers_.ReadyToAcceptHandler_) {
-        federated.EventHandlers_.ReadyToAcceptHandler([ctx = SelfContext, h](NTopic::TWriteSessionEvent::TReadyToAcceptEvent& e) {
-            if (auto self = ctx->LockShared()) {
-                auto converted = self->ConvertReadyToAcceptEvent(e);
-                h(converted);
-            }
-        });
+        federated.EventHandlers_.ReadyToAcceptHandler(h);
     }
     if (auto h = pq.EventHandlers_.AcksHandler_) {
         federated.EventHandlers_.AcksHandler([ctx = SelfContext, h](NTopic::TWriteSessionEvent::TAcksEvent& e) {
@@ -99,35 +90,28 @@ TWriteSessionEvent::TAcksEvent TWriteSessionImpl::ConvertAcksEvent(NTopic::TWrit
     return converted;
 }
 
-TWriteSessionEvent::TReadyToAcceptEvent TWriteSessionImpl::ConvertReadyToAcceptEvent(NTopic::TWriteSessionEvent::TReadyToAcceptEvent const& event) {
-    return TWriteSessionEvent::TReadyToAcceptEvent{std::move(event.ContinuationToken)};
-}
-
 TSessionClosedEvent TWriteSessionImpl::ConvertSessionClosedEvent(NTopic::TSessionClosedEvent const& event) {
     auto issues = event.GetIssues();
     return TSessionClosedEvent(event.GetStatus(), std::move(issues));
 }
 
 TWriteSessionEvent::TEvent TWriteSessionImpl::ConvertEvent(NTopic::TWriteSessionEvent::TEvent& event) {
-    TWriteSessionEvent::TEvent converted;
-    std::visit(TOverloaded {
-        [this, &converted](NTopic::TWriteSessionEvent::TAcksEvent const& e) {
-            converted = ConvertAcksEvent(e);
-        },
-        [this, &converted](NTopic::TWriteSessionEvent::TReadyToAcceptEvent& e) {
-            converted = ConvertReadyToAcceptEvent(e);
-        },
-        [this, &converted](NTopic::TSessionClosedEvent const& e) {
-            converted = ConvertSessionClosedEvent(e);
-        }
-    }, event);
-    return converted;
+    if (auto e = std::get_if<NTopic::TWriteSessionEvent::TAcksEvent>(&event)) {
+        return ConvertAcksEvent(*e);
+    }
+    if (auto e = std::get_if<NTopic::TSessionClosedEvent>(&event)) {
+        return ConvertSessionClosedEvent(*e);
+    }
+    if (auto e = std::get_if<NTopic::TWriteSessionEvent::TReadyToAcceptEvent>(&event)) {
+        return *e;
+    }
+    Y_UNREACHABLE();
 }
 
 // Client method
 TMaybe<TWriteSessionEvent::TEvent> TWriteSessionImpl::GetEvent(bool block) {
-    if (auto ev = FederatedWriteSession->GetEvent(block)) {
-        return ConvertEvent(*ev);
+    if (auto e = FederatedWriteSession->GetEvent(block)) {
+        return ConvertEvent(*e);
     }
     return {};
 }
@@ -195,6 +179,10 @@ void TWriteSessionImpl::Write(TContinuationToken&& token, TStringBuf data, TMayb
 //     return TStringBuilder() << "MessageGroupId [" << Settings.MessageGroupId_ << "] SessionId [" << SessionId << "] ";
 // }
 
+TString DebugString(const TWriteSessionEvent::TEvent& event) {
+    return std::visit([](const auto& ev) { return ev.DebugString(); }, event);
+}
+
 TString TWriteSessionEvent::TAcksEvent::DebugString() const {
     TStringBuilder res;
     res << "AcksEvent:";
@@ -211,10 +199,6 @@ TString TWriteSessionEvent::TAcksEvent::DebugString() const {
             << " partition quoted time " << stat->PartitionQuotedTime << " topic quoted time " << stat->TopicQuotedTime;
     }
     return res;
-}
-
-TString TWriteSessionEvent::TReadyToAcceptEvent::DebugString() const {
-    return "ReadyToAcceptEvent";
 }
 
 // Client method, no Lock

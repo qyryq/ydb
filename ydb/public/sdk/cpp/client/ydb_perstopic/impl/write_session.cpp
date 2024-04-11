@@ -14,19 +14,8 @@ namespace NYdb::NPQTopic {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // TWriteSession
 
-// TWriteSession::TWriteSession(
-//         const TWriteSessionSettings& settings,
-//          std::shared_ptr<TPersQueueClient::TImpl> client,
-//          std::shared_ptr<TGRpcConnectionsImpl> connections)
-//     : TContextOwner(settings, std::move(client), std::move(connections)) {
-// }
-
 TWriteSession::TWriteSession(std::shared_ptr<NFederatedTopic::TFederatedTopicClient> client, TWriteSessionSettings settings)
     : TContextOwner(settings, client) {}
-
-// TWriteSession::TWriteSession(std::shared_ptr<NTopic::IWriteSession> session)
-//     : TContextOwner(std::move(session)) {
-// }
 
 NThreading::TFuture<ui64> TWriteSession::GetInitSeqNo() {
     return TryGetImpl()->GetInitSeqNo();
@@ -44,13 +33,11 @@ NThreading::TFuture<void> TWriteSession::WaitEvent() {
     return TryGetImpl()->WaitEvent();
 }
 
-void TWriteSession::WriteEncoded(TContinuationToken&& token, TStringBuf data, ECodec codec, ui32 originalSize,
-                                 TMaybe<ui64> seqNo, TMaybe<TInstant> createTimestamp) {
+void TWriteSession::WriteEncoded(TContinuationToken&& token, TStringBuf data, ECodec codec, ui32 originalSize, TMaybe<ui64> seqNo, TMaybe<TInstant> createTimestamp) {
     TryGetImpl()->WriteEncoded(std::move(token), data, codec, originalSize, seqNo, createTimestamp);
 }
 
-void TWriteSession::Write(TContinuationToken&& token, TStringBuf data, TMaybe<ui64> seqNo,
-                          TMaybe<TInstant> createTimestamp) {
+void TWriteSession::Write(TContinuationToken&& token, TStringBuf data, TMaybe<ui64> seqNo, TMaybe<TInstant> createTimestamp) {
     TryGetImpl()->Write(std::move(token), data, seqNo, createTimestamp);
 }
 

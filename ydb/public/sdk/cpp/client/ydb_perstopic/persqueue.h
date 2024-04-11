@@ -863,7 +863,6 @@ struct TWriteSessionEvent {
         TMaybe<TWrittenMessageDetails> Details;
         //! Write stats from server. See TWriteStat. nullptr for DISCARDED event.
         TWriteStat::TPtr Stat;
-
     };
 
     struct TAcksEvent {
@@ -873,29 +872,9 @@ struct TWriteSessionEvent {
         TVector<TWriteAck> Acks;
 
         TString DebugString() const;
-
     };
 
-    //! Indicates that a writer is ready to accept new message(s).
-    //! Continuation token should be kept and then used in write methods.
-    struct TReadyToAcceptEvent {
-        mutable TContinuationToken ContinuationToken;
-
-        TReadyToAcceptEvent() = delete;
-        TReadyToAcceptEvent(TContinuationToken&& t) : ContinuationToken(std::move(t)) {
-        }
-        TReadyToAcceptEvent(TReadyToAcceptEvent&&) = default;
-        TReadyToAcceptEvent(const TReadyToAcceptEvent& other) : ContinuationToken(std::move(other.ContinuationToken)) {
-        }
-        TReadyToAcceptEvent& operator=(TReadyToAcceptEvent&&) = default;
-        TReadyToAcceptEvent& operator=(const TReadyToAcceptEvent& other) {
-            ContinuationToken = std::move(other.ContinuationToken);
-            return *this;
-        }
-
-        TString DebugString() const;
-    };
-
+    using TReadyToAcceptEvent = NTopic::TWriteSessionEvent::TReadyToAcceptEvent;
     using TEvent = std::variant<TAcksEvent, TReadyToAcceptEvent, TSessionClosedEvent>;
 };
 

@@ -26,11 +26,6 @@ private:
 public:
     TWriteSession(std::shared_ptr<NFederatedTopic::TFederatedTopicClient> client, TWriteSessionSettings settings);
 
-    // TWriteSession(const TWriteSessionSettings& settings,
-    //         std::shared_ptr<TPersQueueClient::TImpl> client,
-    //         std::shared_ptr<TGRpcConnectionsImpl> connections);
-    // TWriteSession(std::shared_ptr<NTopic::IWriteSession> session);
-
     NThreading::TFuture<void> WaitEvent() override;
     TMaybe<TWriteSessionEvent::TEvent> GetEvent(bool block = false) override;
     TVector<TWriteSessionEvent::TEvent> GetEvents(bool block = false, TMaybe<size_t> maxEventsCount = Nothing()) override;
@@ -40,7 +35,6 @@ public:
     void Write(TContinuationToken&&, TStringBuf data, TMaybe<ui64> seqNo = Nothing(), TMaybe<TInstant> createTimestamp = Nothing()) override;
     void WriteEncoded(TContinuationToken&&, TStringBuf data, ECodec codec, ui32 originalSize,
                       TMaybe<ui64> seqNo = Nothing(), TMaybe<TInstant> createTimestamp = Nothing()) override;
-
 
     bool Close(TDuration closeTimeout = TDuration::Max()) override;
 
