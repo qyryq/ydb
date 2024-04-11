@@ -206,6 +206,11 @@ bool TWriteSessionImpl::Close(TDuration closeTimeout) {
     return FederatedWriteSession->Close(closeTimeout);
 }
 
+// Client method, no Lock
+TWriterCounters::TPtr TWriteSessionImpl::GetCounters() {
+    return FederatedWriteSession->GetCounters();
+}
+
 TWriteSessionImpl::~TWriteSessionImpl() {
     // LOG_LAZY(DbDriverState->Log, TLOG_DEBUG, LogPrefix() << "Write session: destroy");
 }

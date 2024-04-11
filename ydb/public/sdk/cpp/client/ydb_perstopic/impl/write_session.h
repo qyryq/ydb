@@ -38,7 +38,7 @@ public:
 
     bool Close(TDuration closeTimeout = TDuration::Max()) override;
 
-    TWriterCounters::TPtr GetCounters() override {Y_ABORT("Unimplemented"); } //ToDo - unimplemented;
+    TWriterCounters::TPtr GetCounters() override;
 
     ~TWriteSession();
 };

@@ -45,6 +45,10 @@ bool TWriteSession::Close(TDuration closeTimeout) {
     return TryGetImpl()->Close(closeTimeout);
 }
 
+TWriterCounters::TPtr TWriteSession::GetCounters() {
+    return TryGetImpl()->GetCounters();
+}
+
 TWriteSession::~TWriteSession() {
     TryGetImpl()->Close(TDuration::Zero());
 }

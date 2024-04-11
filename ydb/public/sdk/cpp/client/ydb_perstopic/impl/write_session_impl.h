@@ -40,7 +40,7 @@ public:
 
     bool Close(TDuration closeTimeout = TDuration::Max());
 
-    TWriterCounters::TPtr GetCounters() {Y_ABORT("Unimplemented"); } //ToDo - unimplemented;
+    TWriterCounters::TPtr GetCounters();
 
     ~TWriteSessionImpl(); // will not call close - destroy everything without acks
 
