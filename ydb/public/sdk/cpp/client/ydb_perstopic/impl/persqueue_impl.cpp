@@ -66,11 +66,6 @@ std::shared_ptr<TWriteSession> TPersQueueClient::TImpl::CreateTWriteSession(cons
     // if (!Settings.RetryPolicy_) {
     //     Settings.RetryPolicy_ = IRetryPolicy::GetDefaultPolicy();
     // }
-    // // TODO(qyryq) Safe to delete.
-    // if (Settings.PreferredCluster_ && !Settings.AllowFallbackToOtherClusters_) {
-    //     TargetCluster = *Settings.PreferredCluster_;
-    //     TargetCluster.to_lower();
-    // }
     // if (Settings.Counters_.Defined()) {
     //     Counters = *Settings.Counters_;
     // } else {
@@ -153,12 +148,11 @@ std::shared_ptr<TPersQueueClient::TImpl::IWriteSessionConnectionProcessorFactory
 
 NFederatedTopic::TFederatedTopicClientSettings ConvertClientSettings(TPersQueueClientSettings const& pq) {
     NFederatedTopic::TFederatedTopicClientSettings federated;
-    // TODO(qyryq) federated.DefaultCompressionExecutor(pq.DefaultCompressionExecutor_);
-    // TODO(qyryq) federated.DefaultHandlersExecutor(pq.DefaultHandlersExecutor_);
+
+    federated.DefaultCompressionExecutor(pq.DefaultCompressionExecutor_);
+    federated.DefaultHandlersExecutor(pq.DefaultHandlersExecutor_);
 
     // TODO(qyryq) pq.ClusterDiscoveryMode_
-
-
 
     if (pq.Database_) {
         federated.Database(*pq.Database_);

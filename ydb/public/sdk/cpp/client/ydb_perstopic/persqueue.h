@@ -362,70 +362,9 @@ enum class EClusterDiscoveryMode {
 using TContinuationToken = NTopic::TContinuationToken;
 using TContinuationTokenIssuer = NTopic::TContinuationTokenIssuer;
 
-struct TWriterCounters : public TThrRefBase {
-    using TSelf = TWriterCounters;
-    using TPtr = TIntrusivePtr<TSelf>;
+using TWriterCounters = NTopic::TWriterCounters;
+using TReaderCounters = NTopic::TReaderCounters;
 
-    explicit TWriterCounters(const TIntrusivePtr<::NMonitoring::TDynamicCounters>& counters);
-
-    ::NMonitoring::TDynamicCounters::TCounterPtr Errors;
-    ::NMonitoring::TDynamicCounters::TCounterPtr CurrentSessionLifetimeMs;
-
-    ::NMonitoring::TDynamicCounters::TCounterPtr BytesWritten;
-    ::NMonitoring::TDynamicCounters::TCounterPtr MessagesWritten;
-    ::NMonitoring::TDynamicCounters::TCounterPtr BytesWrittenCompressed;
-
-    ::NMonitoring::TDynamicCounters::TCounterPtr BytesInflightUncompressed;
-    ::NMonitoring::TDynamicCounters::TCounterPtr BytesInflightCompressed;
-    ::NMonitoring::TDynamicCounters::TCounterPtr BytesInflightTotal;
-    ::NMonitoring::TDynamicCounters::TCounterPtr MessagesInflight;
-
-    //! Histograms reporting % usage of memory limit in time.
-    //! Provides a histogram looking like: 10% : 100ms, 20%: 300ms, ... 50%: 200ms, ... 100%: 50ms
-    //! Which means that < 10% memory usage was observed for 100ms during the period and 50% usage was observed for 200ms
-    //! Used to monitor if the writer successfully deals with data flow provided. Larger values in higher buckets
-    //! mean that writer is close to overflow (or being overflown) for major periods of time
-    //! 3 histograms stand for:
-    //! Total memory usage:
-    ::NMonitoring::THistogramPtr TotalBytesInflightUsageByTime;
-    //! Memory usage by messages waiting for comression:
-    ::NMonitoring::THistogramPtr UncompressedBytesInflightUsageByTime;
-    //! Memory usage by compressed messages pending for write:
-    ::NMonitoring::THistogramPtr CompressedBytesInflightUsageByTime;
-};
-
-struct TReaderCounters : public TThrRefBase {
-    using TSelf = TReaderCounters;
-    using TPtr = TIntrusivePtr<TSelf>;
-
-    TReaderCounters() = default;
-    explicit TReaderCounters(const TIntrusivePtr<::NMonitoring::TDynamicCounters>& counters);
-
-    ::NMonitoring::TDynamicCounters::TCounterPtr Errors;
-    ::NMonitoring::TDynamicCounters::TCounterPtr CurrentSessionLifetimeMs;
-
-    ::NMonitoring::TDynamicCounters::TCounterPtr BytesRead;
-    ::NMonitoring::TDynamicCounters::TCounterPtr MessagesRead;
-    ::NMonitoring::TDynamicCounters::TCounterPtr BytesReadCompressed;
-
-    ::NMonitoring::TDynamicCounters::TCounterPtr BytesInflightUncompressed;
-    ::NMonitoring::TDynamicCounters::TCounterPtr BytesInflightCompressed;
-    ::NMonitoring::TDynamicCounters::TCounterPtr BytesInflightTotal;
-    ::NMonitoring::TDynamicCounters::TCounterPtr MessagesInflight;
-
-    //! Histograms reporting % usage of memory limit in time.
-    //! Provides a histogram looking like: 10% : 100ms, 20%: 300ms, ... 50%: 200ms, ... 100%: 50ms
-    //! Which means that < 10% memory usage was observed for 100ms during the period and 50% usage was observed for 200ms
-    //! Used to monitor if the read session successfully deals with data flow provided. Larger values in higher buckets
-    //! mean that read session is close to overflow (or being overflown) for major periods of time.
-    //!
-    //! Total memory usage.
-    ::NMonitoring::THistogramPtr TotalBytesInflightUsageByTime;
-    //! Memory usage by messages waiting that are ready to be received by user.
-    ::NMonitoring::THistogramPtr UncompressedBytesInflightUsageByTime;
-    //! Memory usage by compressed messages pending for decompression.
-    ::NMonitoring::THistogramPtr CompressedBytesInflightUsageByTime;
-};
 
 //! Partition stream.
 struct TPartitionStream : public TThrRefBase {

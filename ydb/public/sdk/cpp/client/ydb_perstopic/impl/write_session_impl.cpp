@@ -20,24 +20,6 @@ namespace NCompressionDetails {
     THolder<IOutputStream> CreateCoder(ECodec codec, TBuffer& result, int quality);
 }
 
-#define HISTOGRAM_SETUP ::NMonitoring::ExplicitHistogram({0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100})
-TWriterCounters::TWriterCounters(const TIntrusivePtr<::NMonitoring::TDynamicCounters>& counters) {
-    Errors = counters->GetCounter("errors", true);
-    CurrentSessionLifetimeMs = counters->GetCounter("currentSessionLifetimeMs", false);
-    BytesWritten = counters->GetCounter("bytesWritten", true);
-    MessagesWritten = counters->GetCounter("messagesWritten", true);
-    BytesWrittenCompressed = counters->GetCounter("bytesWrittenCompressed", true);
-    BytesInflightUncompressed = counters->GetCounter("bytesInflightUncompressed", false);
-    BytesInflightCompressed = counters->GetCounter("bytesInflightCompressed", false);
-    BytesInflightTotal = counters->GetCounter("bytesInflightTotal", false);
-    MessagesInflight = counters->GetCounter("messagesInflight", false);
-
-    TotalBytesInflightUsageByTime = counters->GetHistogram("totalBytesInflightUsageByTime", HISTOGRAM_SETUP);
-    UncompressedBytesInflightUsageByTime = counters->GetHistogram("uncompressedBytesInflightUsageByTime", HISTOGRAM_SETUP);
-    CompressedBytesInflightUsageByTime = counters->GetHistogram("compressedBytesInflightUsageByTime", HISTOGRAM_SETUP);
-}
-#undef HISTOGRAM_SETUP
-
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // TWriteSessionImpl
 
@@ -63,7 +45,7 @@ NFederatedTopic::TFederatedWriteSessionSettings TWriteSessionImpl::ConvertWriteS
     federated.BatchFlushInterval(pq.BatchFlushInterval_);
     federated.BatchFlushSizeBytes(pq.BatchFlushSizeBytes_);
     federated.ConnectTimeout(pq.ConnectTimeout_);
-    // TODO(qyryq) federated.Counters(pq.Counters_);
+    federated.Counters(pq.Counters_);
     federated.CompressionExecutor(pq.CompressionExecutor_);
     if (auto h = pq.EventHandlers_.ReadyToAcceptHandler_) {
         federated.EventHandlers_.ReadyToAcceptHandler([ctx = SelfContext, h](NTopic::TWriteSessionEvent::TReadyToAcceptEvent& e) {

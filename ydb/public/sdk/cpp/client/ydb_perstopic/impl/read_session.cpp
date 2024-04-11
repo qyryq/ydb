@@ -947,24 +947,4 @@ void TDeferredCommit::TImpl::Commit() {
     Offsets.clear();
 }
 
-#define HISTOGRAM_SETUP NMonitoring::ExplicitHistogram({0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100})
-
-TReaderCounters::TReaderCounters(const TIntrusivePtr<::NMonitoring::TDynamicCounters>& counters) {
-    Errors = counters->GetCounter("errors", true);
-    CurrentSessionLifetimeMs = counters->GetCounter("currentSessionLifetimeMs", false);
-    BytesRead = counters->GetCounter("bytesRead", true);
-    MessagesRead = counters->GetCounter("messagesRead", true);
-    BytesReadCompressed = counters->GetCounter("bytesReadCompressed", true);
-    BytesInflightUncompressed = counters->GetCounter("bytesInflightUncompressed", false);
-    BytesInflightCompressed = counters->GetCounter("bytesInflightCompressed", false);
-    BytesInflightTotal = counters->GetCounter("bytesInflightTotal", false);
-    MessagesInflight = counters->GetCounter("messagesInflight", false);
-
-    TotalBytesInflightUsageByTime = counters->GetHistogram("totalBytesInflightUsageByTime", HISTOGRAM_SETUP);
-    UncompressedBytesInflightUsageByTime = counters->GetHistogram("uncompressedBytesInflightUsageByTime", HISTOGRAM_SETUP);
-    CompressedBytesInflightUsageByTime = counters->GetHistogram("compressedBytesInflightUsageByTime", HISTOGRAM_SETUP);
-}
-
-#undef HISTOGRAM_SETUP
-
 } // namespace NYdb::NPQTopic
