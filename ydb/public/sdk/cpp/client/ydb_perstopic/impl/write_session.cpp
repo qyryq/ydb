@@ -59,12 +59,9 @@ ui64 TSimpleBlockingWriteSession::GetInitSeqNo() {
     return Writer->GetInitSeqNo().GetValueSync();
 }
 
-bool TSimpleBlockingWriteSession::Write(
-        TStringBuf data, TMaybe<ui64> seqNo, TMaybe<TInstant> createTimestamp, const TDuration& blockTimeout
-) {
-    auto continuationToken = WaitForToken(blockTimeout);
-    if (continuationToken.Defined()) {
-        Writer->Write(std::move(*continuationToken), std::move(data), seqNo, createTimestamp);
+bool TSimpleBlockingWriteSession::Write(TStringBuf data, TMaybe<ui64> seqNo, TMaybe<TInstant> createTimestamp, const TDuration& blockTimeout) {
+    if (auto token = WaitForToken(blockTimeout)) {
+        Writer->Write(std::move(*token), std::move(data), seqNo, createTimestamp);
         return true;
     }
     return false;
@@ -91,7 +88,7 @@ TMaybe<TContinuationToken> TSimpleBlockingWriteSession::WaitForToken(const TDura
             }
         }
 
-        if (token.Defined()) {
+        if (token) {
             return token;
         }
 

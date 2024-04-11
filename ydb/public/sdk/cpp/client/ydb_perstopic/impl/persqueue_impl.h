@@ -18,14 +18,6 @@ class TWriteSession;
 
 class TPersQueueClient::TImpl : public TClientImplCommon<TPersQueueClient::TImpl> {
 public:
-    // // Constructor for main client.
-    // TImpl(std::shared_ptr<TGRpcConnectionsImpl> connections, const TPersQueueClientSettings& settings)
-    //     : TClientImplCommon(std::move(connections), settings)
-    //     , Settings(settings)
-    //     , FederatedTopicClientSettings(ConvertToFederatedTopicClientSettings(settings))
-    //     , FederatedTopicClient(std::make_shared<NFederatedTopic::TFederatedTopicClient>(Connections_, FederatedTopicClientSettings))
-    // {
-    // }
 
     // Constructor for main client.
     TImpl(const TDriver& driver, const TPersQueueClientSettings& settings)
@@ -256,7 +248,8 @@ public:
 
 private:
 
-    std::shared_ptr<TWriteSession> CreateTWriteSession(const TWriteSessionSettings& settings);
+    // Returns a pointer to TWriteSession, not IWriteSession.
+    std::shared_ptr<TWriteSession> CreateWriteSessionInternal(const TWriteSessionSettings& settings);
 
 private:
     const TPersQueueClientSettings Settings;

@@ -47,10 +47,10 @@ std::pair<TString, TString> PrepareDatabaseTopicPathsForFederatedClient(TStringB
 }
 
 std::shared_ptr<IWriteSession> TPersQueueClient::TImpl::CreateWriteSession(const TWriteSessionSettings& settings) {
-    return CreateTWriteSession(settings);
+    return CreateWriteSessionInternal(settings);
 }
 
-std::shared_ptr<TWriteSession> TPersQueueClient::TImpl::CreateTWriteSession(const TWriteSessionSettings& settings) {
+std::shared_ptr<TWriteSession> TPersQueueClient::TImpl::CreateWriteSessionInternal(const TWriteSessionSettings& settings) {
     TMaybe<TWriteSessionSettings> maybeSettings;
     // if (!settings.CompressionExecutor_ || !settings.EventHandlers_.HandlersExecutor_) {
     //     maybeSettings = settings;
@@ -118,7 +118,7 @@ std::shared_ptr<ISimpleBlockingWriteSession> TPersQueueClient::TImpl::CreateSimp
         // LOG_LAZY(dbDriverState->Log, TLOG_WARNING, "TSimpleBlockingWriteSession: Cannot use CommonHandler, resetting.");
         subSettings.EventHandlers_.CommonHandler({});
     }
-    return std::make_shared<TSimpleBlockingWriteSession>(CreateTWriteSession(subSettings));
+    return std::make_shared<TSimpleBlockingWriteSession>(CreateWriteSessionInternal(subSettings));
 }
 
 std::shared_ptr<TPersQueueClient::TImpl> TPersQueueClient::TImpl::GetClientForEndpoint(const TString& clusterEndoint) {

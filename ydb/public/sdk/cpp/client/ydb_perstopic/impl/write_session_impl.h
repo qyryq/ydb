@@ -1,6 +1,5 @@
 #pragma once
 
-#include "common.h"
 #include "persqueue_impl.h"
 
 #include <ydb/public/sdk/cpp/client/ydb_perstopic/persqueue.h>
@@ -9,18 +8,6 @@
 #include <util/generic/buffer.h>
 
 namespace NYdb::NPQTopic {
-
-inline const TString& GetCodecId(const ECodec codec) {
-    static THashMap<ECodec, TString> idByCodec{
-        {ECodec::RAW, TString(1, '\0')},
-        {ECodec::GZIP, "\1"},
-        {ECodec::LZOP, "\2"},
-        {ECodec::ZSTD, "\3"}
-    };
-    Y_ABORT_UNLESS(idByCodec.contains(codec));
-    return idByCodec[codec];
-}
-
 
 namespace NTests {
     class TSimpleWriteSessionTestAdapter;
