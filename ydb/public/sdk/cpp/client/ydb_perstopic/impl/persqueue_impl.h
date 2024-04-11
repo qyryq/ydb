@@ -29,6 +29,7 @@ public:
     }
 
 
+    // TODO(qyryq) Delete
     // Constructor for subclients with endpoints discovered by cluster discovery.
     // Async discovery mode is used because this client is created inside SDK threads.
     // See YDB-1231 and YDB-1232.
@@ -194,7 +195,6 @@ public:
                 TRpcRequestSettings::Make(settings));
     }
 
-
     TAsyncDescribeTopicResult DescribeTopic(const TString& path, const TDescribeTopicSettings& settings) {
         auto request = MakeOperationRequest<Ydb::PersQueue::V1::DescribeTopicRequest>(settings);
         request.set_path(path);
@@ -227,8 +227,6 @@ public:
     std::shared_ptr<IReadSession> CreateReadSession(const TReadSessionSettings& settings);
     std::shared_ptr<ISimpleBlockingWriteSession> CreateSimpleWriteSession(const TWriteSessionSettings& settings);
     std::shared_ptr<IWriteSession> CreateWriteSession(const TWriteSessionSettings& settings);
-
-    std::shared_ptr<NFederatedTopic::TFederatedTopicClient> GetFederatedTopicClient();
 
     std::shared_ptr<TImpl> GetClientForEndpoint(const TString& clusterEndoint);
 

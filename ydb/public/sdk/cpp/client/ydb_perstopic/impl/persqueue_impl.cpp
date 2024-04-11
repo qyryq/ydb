@@ -88,10 +88,6 @@ std::shared_ptr<TWriteSession> TPersQueueClient::TImpl::CreateWriteSessionIntern
     return std::make_shared<TWriteSession>(client, writerSettings);
 }
 
-std::shared_ptr<NFederatedTopic::TFederatedTopicClient> TPersQueueClient::TImpl::GetFederatedTopicClient() {
-    return FederatedTopicClient;
-}
-
 std::shared_ptr<ISimpleBlockingWriteSession> TPersQueueClient::TImpl::CreateSimpleWriteSession(
         const TWriteSessionSettings& settings
 ) {
