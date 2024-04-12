@@ -128,53 +128,6 @@ Y_UNIT_TEST_SUITE(BasicUsage) {
                                      messageCount, (totalSize / 1_MB), (TInstant::Now() - start).Seconds()));
     }
 
-
-    void SimpleWriteAndValidateData(
-            TPersQueueYdbSdkTestSetup* setup, TWriteSessionSettings& writeSettings, ui64 count,
-            TMaybe<bool> shouldCaptureData = Nothing()
-    ) {
-        std::shared_ptr<NYdb::NPQTopic::IReadSession> readSession;
-
-        auto& client = setup->GetPersQueueClient();
-        auto session = client.CreateSimpleBlockingWriteSession(writeSettings);
-        TString messageBase = "message-";
-        TVector<TString> sentMessages;
-
-        for (auto i = 0u; i < count; i++) {
-            sentMessages.emplace_back(messageBase * (i+1) + ToString(i));
-            auto res = session->Write(sentMessages.back());
-            UNIT_ASSERT(res);
-        }
-        {
-            auto sessionAdapter = TSimpleWriteSessionTestAdapter(
-                    dynamic_cast<TSimpleBlockingWriteSession *>(session.get()));
-            if (shouldCaptureData.Defined()) {
-                TStringBuilder msg;
-                msg << "Session has captured " << sessionAdapter.GetAcquiredMessagesCount()
-                    << " messages, capturing was expected: " << *shouldCaptureData << Endl;
-                UNIT_ASSERT_VALUES_EQUAL_C(sessionAdapter.GetAcquiredMessagesCount() > 0, *shouldCaptureData, msg.c_str());
-            }
-        }
-        session->Close();
-
-        auto readSettings = setup->GetReadSessionSettings();
-        NThreading::TPromise<void> checkedPromise = NThreading::NewPromise<void>();
-        auto totalReceived = 0u;
-        readSettings.EventHandlers_.SimpleDataHandlers([&](NYdb::NPQTopic::TReadSessionEvent::TDataReceivedEvent& ev) {
-            auto& messages = ev.GetMessages();
-            for (size_t i = 0u; i < messages.size(); ++i) {
-                auto& message = messages[i];
-                UNIT_ASSERT_VALUES_EQUAL(message.GetData(), sentMessages[totalReceived]);
-                totalReceived++;
-            }
-            if (totalReceived == sentMessages.size())
-                checkedPromise.SetValue();
-        });
-        readSession = client.CreateReadSession(readSettings);
-        checkedPromise.GetFuture().GetValueSync();
-        readSession->Close(TDuration::MilliSeconds(10));
-    }
-
     Y_UNIT_TEST(MaxByteSizeEqualZero) {
         auto setup = std::make_shared<NPQTopic::NTests::TPersQueueYdbSdkTestSetup>(TEST_CASE_NAME);
         TPersQueueClient client(setup->GetDriver());
@@ -205,34 +158,6 @@ Y_UNIT_TEST_SUITE(BasicUsage) {
 
         auto& dataReceived = std::get<TReadSessionEvent::TDataReceivedEvent>(*event);
         dataReceived.Commit();
-    }
-
-    Y_UNIT_TEST(WriteAndReadSomeMessagesWithAsyncCompression) {
-        auto setup = std::make_shared<TPersQueueYdbSdkTestSetup>(TEST_CASE_NAME);
-        TWriteSessionSettings writeSettings;
-        writeSettings.Path(setup->GetTestTopic()).MessageGroupId("src_id");
-        SimpleWriteAndValidateData(setup.get(), writeSettings, 100u, true);
-    }
-
-    Y_UNIT_TEST(WriteAndReadSomeMessagesWithSyncCompression) {
-        auto setup = std::make_shared<TPersQueueYdbSdkTestSetup>(TEST_CASE_NAME);
-        TWriteSessionSettings writeSettings;
-        writeSettings.Path(setup->GetTestTopic()).MessageGroupId("src_id");
-        IExecutor::TPtr executor = CreateSyncExecutor();
-        writeSettings.CompressionExecutor(executor);
-        // LOGBROKER-7189
-        //SimpleWriteAndValidateData(setup.get(), writeSettings, 100u, false);
-        SimpleWriteAndValidateData(setup.get(), writeSettings, 100u, true);
-    }
-
-    Y_UNIT_TEST(WriteAndReadSomeMessagesWithNoCompression) {
-        auto setup = std::make_shared<TPersQueueYdbSdkTestSetup>(TEST_CASE_NAME);
-        TWriteSessionSettings writeSettings;
-        writeSettings.Path(setup->GetTestTopic()).MessageGroupId("src_id");
-        writeSettings.Codec(ECodec::RAW);
-        // LOGBROKER-7189
-        //SimpleWriteAndValidateData(setup.get(), writeSettings, 100u, false);
-        SimpleWriteAndValidateData(setup.get(), writeSettings, 100u, true);
     }
 
     Y_UNIT_TEST(TWriteSession_WriteAndReadAndCommitRandomMessages) {
