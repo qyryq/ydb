@@ -2,7 +2,6 @@
 #include "read_session.h"
 #include "write_session.h"
 
-// #include <ydb/public/sdk/cpp/client/ydb_topic/topic_settings.h>
 
 namespace NYdb::NPQTopic {
 
@@ -51,26 +50,18 @@ std::shared_ptr<IWriteSession> TPersQueueClient::TImpl::CreateWriteSession(const
 }
 
 std::shared_ptr<TWriteSession> TPersQueueClient::TImpl::CreateWriteSessionInternal(const TWriteSessionSettings& settings) {
-    TMaybe<TWriteSessionSettings> maybeSettings;
-    // if (!settings.CompressionExecutor_ || !settings.EventHandlers_.HandlersExecutor_) {
-    //     maybeSettings = settings;
-    //     with_lock (Lock) {
-    //         if (!settings.CompressionExecutor_) {
-    //             maybeSettings->CompressionExecutor(Settings.DefaultCompressionExecutor_);
-    //         }
-    //         if (!settings.EventHandlers_.HandlersExecutor_) {
-    //             maybeSettings->EventHandlers_.HandlersExecutor(Settings.DefaultHandlersExecutor_);
-    //         }
-    //     }
-    // }
-    // if (!Settings.RetryPolicy_) {
-    //     Settings.RetryPolicy_ = IRetryPolicy::GetDefaultPolicy();
-    // }
-    // if (Settings.Counters_.Defined()) {
-    //     Counters = *Settings.Counters_;
-    // } else {
-    //     Counters = MakeIntrusive<TWriterCounters>(new ::NMonitoring::TDynamicCounters());
-    // }
+    TMaybe<TWriteSessionSettings> maybeSettings = settings;
+    with_lock (Lock) {
+        if (!settings.CompressionExecutor_) {
+            maybeSettings->CompressionExecutor(Settings.DefaultCompressionExecutor_);
+        }
+        if (!settings.EventHandlers_.HandlersExecutor_) {
+            maybeSettings->EventHandlers_.HandlersExecutor(Settings.DefaultHandlersExecutor_);
+        }
+        if (!settings.RetryPolicy_) {
+            maybeSettings->RetryPolicy(IRetryPolicy::GetDefaultPolicy());
+        }
+    }
 
     auto [database, topic] = PrepareDatabaseTopicPathsForFederatedClient(DbDriverState_->GetEndpoint(), DbDriverState_->Database, settings.Path_);
     auto writerSettings = maybeSettings.GetOrElse(settings);
@@ -80,6 +71,8 @@ std::shared_ptr<TWriteSession> TPersQueueClient::TImpl::CreateWriteSessionIntern
     if (writerSettings.RetryPolicy_) {
         clientSettings.RetryPolicy(writerSettings.RetryPolicy_);
     }
+
+    // TODO(qyryq) Reuse clients based on database, topic, credentials.
     auto client = std::make_shared<NFederatedTopic::TFederatedTopicClient>(*Driver, clientSettings);
     return std::make_shared<TWriteSession>(client, writerSettings);
 }
@@ -87,25 +80,28 @@ std::shared_ptr<TWriteSession> TPersQueueClient::TImpl::CreateWriteSessionIntern
 std::shared_ptr<ISimpleBlockingWriteSession> TPersQueueClient::TImpl::CreateSimpleWriteSession(const TWriteSessionSettings& settings) {
     auto subSettings = settings;
     with_lock (Lock) {
-        subSettings.EventHandlers_.HandlersExecutor(Settings.DefaultHandlersExecutor_);
+        if (!settings.EventHandlers_.HandlersExecutor_) {
+            subSettings.EventHandlers_.HandlersExecutor(Settings.DefaultHandlersExecutor_);
+        }
         if (!settings.CompressionExecutor_) {
             subSettings.CompressionExecutor(Settings.DefaultCompressionExecutor_);
         }
     }
+    auto& Log = CreateInternalInterface(*Driver)->GetLog();
     if (settings.EventHandlers_.AcksHandler_) {
-        // LOG_LAZY(dbDriverState->Log, TLOG_WARNING, "TSimpleBlockingWriteSession: Cannot use AcksHandler, resetting.");
+        LOG_LAZY(Log, TLOG_WARNING, "TSimpleBlockingWriteSession: Cannot use AcksHandler, resetting.");
         subSettings.EventHandlers_.AcksHandler({});
     }
     if (settings.EventHandlers_.ReadyToAcceptHandler_) {
-        // LOG_LAZY(dbDriverState->Log, TLOG_WARNING, "TSimpleBlockingWriteSession: Cannot use ReadyToAcceptHandler, resetting.");
+        LOG_LAZY(Log, TLOG_WARNING, "TSimpleBlockingWriteSession: Cannot use ReadyToAcceptHandler, resetting.");
         subSettings.EventHandlers_.ReadyToAcceptHandler({});
     }
     if (settings.EventHandlers_.SessionClosedHandler_) {
-        // LOG_LAZY(dbDriverState->Log, TLOG_WARNING, "TSimpleBlockingWriteSession: Cannot use SessionClosedHandler, resetting.");
+        LOG_LAZY(Log, TLOG_WARNING, "TSimpleBlockingWriteSession: Cannot use SessionClosedHandler, resetting.");
         subSettings.EventHandlers_.SessionClosedHandler({});
     }
     if (settings.EventHandlers_.CommonHandler_) {
-        // LOG_LAZY(dbDriverState->Log, TLOG_WARNING, "TSimpleBlockingWriteSession: Cannot use CommonHandler, resetting.");
+        LOG_LAZY(Log, TLOG_WARNING, "TSimpleBlockingWriteSession: Cannot use CommonHandler, resetting.");
         subSettings.EventHandlers_.CommonHandler({});
     }
     return std::make_shared<TSimpleBlockingWriteSession>(CreateWriteSessionInternal(subSettings));
