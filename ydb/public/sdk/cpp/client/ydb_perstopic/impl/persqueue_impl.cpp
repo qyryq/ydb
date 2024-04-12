@@ -73,10 +73,6 @@ std::shared_ptr<TWriteSession> TPersQueueClient::TImpl::CreateWriteSessionIntern
     // }
 
     auto [database, topic] = PrepareDatabaseTopicPathsForFederatedClient(DbDriverState_->GetEndpoint(), DbDriverState_->Database, settings.Path_);
-    // Cerr << "XXXXX DbDriverState_->GetEndpoint()=" << DbDriverState_->GetEndpoint()
-    //      << " DbDriverState_->Database=" << DbDriverState_->Database
-    //      << " settings.Path_=" << settings.Path_ << Endl;
-    // Cerr << "XXXXX dbPath=" << database << " topic=" << topic << Endl;
     auto writerSettings = maybeSettings.GetOrElse(settings);
     writerSettings.Path(topic);
     auto clientSettings = FederatedTopicClientSettings;
@@ -88,16 +84,14 @@ std::shared_ptr<TWriteSession> TPersQueueClient::TImpl::CreateWriteSessionIntern
     return std::make_shared<TWriteSession>(client, writerSettings);
 }
 
-std::shared_ptr<ISimpleBlockingWriteSession> TPersQueueClient::TImpl::CreateSimpleWriteSession(
-        const TWriteSessionSettings& settings
-) {
+std::shared_ptr<ISimpleBlockingWriteSession> TPersQueueClient::TImpl::CreateSimpleWriteSession(const TWriteSessionSettings& settings) {
     auto subSettings = settings;
-    // with_lock (Lock) {
-    //     subSettings.EventHandlers_.HandlersExecutor(Settings.DefaultHandlersExecutor_);
-    //     if (!settings.CompressionExecutor_) {
-    //         subSettings.CompressionExecutor(Settings.DefaultCompressionExecutor_);
-    //     }
-    // }
+    with_lock (Lock) {
+        subSettings.EventHandlers_.HandlersExecutor(Settings.DefaultHandlersExecutor_);
+        if (!settings.CompressionExecutor_) {
+            subSettings.CompressionExecutor(Settings.DefaultCompressionExecutor_);
+        }
+    }
     if (settings.EventHandlers_.AcksHandler_) {
         // LOG_LAZY(dbDriverState->Log, TLOG_WARNING, "TSimpleBlockingWriteSession: Cannot use AcksHandler, resetting.");
         subSettings.EventHandlers_.AcksHandler({});
@@ -117,6 +111,8 @@ std::shared_ptr<ISimpleBlockingWriteSession> TPersQueueClient::TImpl::CreateSimp
     return std::make_shared<TSimpleBlockingWriteSession>(CreateWriteSessionInternal(subSettings));
 }
 
+
+// TODO(qyryq) Delete. Used by read session.
 std::shared_ptr<TPersQueueClient::TImpl> TPersQueueClient::TImpl::GetClientForEndpoint(const TString& clusterEndoint) {
     with_lock (Lock) {
         Y_ABORT_UNLESS(!CustomEndpoint);
@@ -133,13 +129,6 @@ std::shared_ptr<TPersQueueClient::TImpl::IReadSessionConnectionProcessorFactory>
     using TRequest = Ydb::PersQueue::V1::MigrationStreamingReadClientMessage;
     using TResponse = Ydb::PersQueue::V1::MigrationStreamingReadServerMessage;
     return CreateConnectionProcessorFactory<TService, TRequest, TResponse>(&TService::Stub::AsyncMigrationStreamingRead, Connections_, DbDriverState_);
-}
-
-std::shared_ptr<TPersQueueClient::TImpl::IWriteSessionConnectionProcessorFactory> TPersQueueClient::TImpl::CreateWriteSessionConnectionProcessorFactory() {
-    using TService = Ydb::PersQueue::V1::PersQueueService;
-    using TRequest = Ydb::PersQueue::V1::StreamingWriteClientMessage;
-    using TResponse = Ydb::PersQueue::V1::StreamingWriteServerMessage;
-    return CreateConnectionProcessorFactory<TService, TRequest, TResponse>(&TService::Stub::AsyncStreamingWrite, Connections_, DbDriverState_);
 }
 
 NFederatedTopic::TFederatedTopicClientSettings ConvertClientSettings(TPersQueueClientSettings const& pq) {

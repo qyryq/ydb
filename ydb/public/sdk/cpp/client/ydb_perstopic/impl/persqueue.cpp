@@ -187,9 +187,7 @@ std::shared_ptr<IWriteSession> TPersQueueClient::CreateWriteSession(const TWrite
     return Impl_->CreateWriteSession(settings);
 }
 
-std::shared_ptr<ISimpleBlockingWriteSession> TPersQueueClient::CreateSimpleBlockingWriteSession(
-        const TWriteSessionSettings& settings
-) {
+std::shared_ptr<ISimpleBlockingWriteSession> TPersQueueClient::CreateSimpleBlockingWriteSession(const TWriteSessionSettings& settings) {
     return Impl_->CreateSimpleWriteSession(settings);
 }
 
