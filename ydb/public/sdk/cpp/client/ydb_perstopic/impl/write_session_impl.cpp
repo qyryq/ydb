@@ -76,7 +76,11 @@ NFederatedTopic::TFederatedWriteSessionSettings TWriteSessionImpl::ConvertWriteS
     }
     federated.PreferredDatabase(pq.PreferredCluster_);
     federated.AllowFallback(pq.AllowFallbackToOtherClusters_);
+
+
     // TODO(qyryq) If pq.ClusterDiscoveryMode == false, then as a topic.
+
+    // TODO(qyryq) Set to true;
     federated.DirectWriteToPartition(false);
     return federated;
 }

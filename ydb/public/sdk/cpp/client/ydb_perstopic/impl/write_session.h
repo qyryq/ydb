@@ -11,17 +11,11 @@
 namespace NYdb::NPQTopic {
 
 
-namespace NTests {
-    class TSimpleWriteSessionTestAdapter;
-}
-
-
 class TWriteSession : public IWriteSession,
                       public TContextOwner<TWriteSessionImpl> {
 private:
     friend class TSimpleBlockingWriteSession;
     friend class TPersQueueClient;
-    friend class NTests::TSimpleWriteSessionTestAdapter;
 
 public:
     TWriteSession(std::shared_ptr<NFederatedTopic::TFederatedTopicClient> client, TWriteSessionSettings settings);

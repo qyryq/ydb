@@ -18,7 +18,6 @@ class TWriteSessionImpl : public TContinuationTokenIssuer,
 private:
     friend class TWriteSession;
     friend class TSimpleBlockingWriteSession;
-    friend class NTests::TSimpleWriteSessionTestAdapter;
 
 public:
 

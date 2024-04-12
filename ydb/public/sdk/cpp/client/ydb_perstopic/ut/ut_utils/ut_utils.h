@@ -450,15 +450,6 @@ public:
     }
 };
 
-class TSimpleWriteSessionTestAdapter {
-public:
-    TSimpleWriteSessionTestAdapter(TSimpleBlockingWriteSession* session);
-    ui64 GetAcquiredMessagesCount() const;
-
-private:
-    TSimpleBlockingWriteSession* Session;
-};
-
 
 void WaitMessagesAcked(std::shared_ptr<IWriteSession> writer, ui64 startSeqNo, ui64 endSeqNo);
 } // namespace NYdb::NPQTopic::NTests

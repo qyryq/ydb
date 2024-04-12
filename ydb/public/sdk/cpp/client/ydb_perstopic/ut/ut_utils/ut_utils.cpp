@@ -19,15 +19,4 @@ void WaitMessagesAcked(std::shared_ptr<IWriteSession> writer, ui64 startSeqNo, u
     }
 }
 
-TSimpleWriteSessionTestAdapter::TSimpleWriteSessionTestAdapter(TSimpleBlockingWriteSession* session)
-    : Session(session)
-{}
-
-ui64 TSimpleWriteSessionTestAdapter::GetAcquiredMessagesCount() const {
-    if (Session->Writer)
-        return Session->Writer->TryGetImpl()->MessagesAcquired;
-    else
-        return 0;
-}
-
 }
