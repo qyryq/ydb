@@ -39,13 +39,10 @@ public:
 
     NThreading::TFuture<ui64> GetInitSeqNo();
 
-    void Write(NTopic::TContinuationToken&& continuationToken, NTopic::TWriteMessage&& message);
+    void Write(NTopic::TContinuationToken&&, NTopic::TWriteMessage&& message);
+    void WriteEncoded(NTopic::TContinuationToken&&, NTopic::TWriteMessage&& params);
 
-    void WriteEncoded(NTopic::TContinuationToken&& continuationToken, NTopic::TWriteMessage&& params);
-
-    void Write(NTopic::TContinuationToken&&, TStringBuf, TMaybe<ui64> seqNo = Nothing(),
-                       TMaybe<TInstant> createTimestamp = Nothing());
-
+    void Write(NTopic::TContinuationToken&&, TStringBuf, TMaybe<ui64> seqNo = Nothing(), TMaybe<TInstant> createTimestamp = Nothing());
     void WriteEncoded(NTopic::TContinuationToken&&, TStringBuf, NTopic::ECodec, ui32,
                               TMaybe<ui64> seqNo = Nothing(), TMaybe<TInstant> createTimestamp = Nothing());
 
@@ -195,6 +192,47 @@ private:
     void Start() {
         TryGetImpl()->Start();
     }
+};
+
+
+
+class TSimpleBlockingFederatedWriteSession : public NTopic::ISimpleBlockingWriteSession {
+public:
+    TSimpleBlockingFederatedWriteSession(std::shared_ptr<TFederatedWriteSession> writer);
+
+    bool Write(NTopic::TWriteMessage&& message, const TDuration& blockTimeout = TDuration::Max()) override;
+
+    bool Write(TStringBuf data, TMaybe<ui64> seqNo = Nothing(), TMaybe<TInstant> createTimestamp = Nothing(),
+               const TDuration& blockTimeout = TDuration::Max()) override;
+
+    ui64 GetInitSeqNo() override;
+
+    bool Close(TDuration closeTimeout = TDuration::Max()) override;
+    bool IsAlive() const override;
+
+    NTopic::TWriterCounters::TPtr GetCounters() override;
+
+private:
+    TMaybe<NTopic::TContinuationToken> WaitForToken(const TDuration& timeout);
+    void HandleAck(NTopic::TWriteSessionEvent::TAcksEvent&);
+    void HandleReady(NTopic::TWriteSessionEvent::TReadyToAcceptEvent&);
+    void HandleClosed(const TSessionClosedEvent&);
+
+private:
+    std::shared_ptr<TFederatedWriteSession> Writer;
+
+    TLog Log;
+
+    enum class State {
+        WORKING,
+        CLOSING,
+        CLOSED,
+    };
+    State SessionState = State::WORKING;
+    bool CloseResult = false;
+    NThreading::TPromise<void> HasBeenClosed;
+
+    std::mutex Lock;
 };
 
 } // namespace NYdb::NFederatedTopic

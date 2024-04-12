@@ -16,15 +16,6 @@ TFederatedTopicClient::TImpl::CreateReadSession(const TFederatedReadSessionSetti
     return std::move(session);
 }
 
-// std::shared_ptr<NTopic::ISimpleBlockingWriteSession>
-// TFederatedTopicClient::TImpl::CreateSimpleBlockingWriteSession(const TFederatedWriteSessionSettings& settings) {
-//     InitObserver();
-//     auto session = std::make_shared<TSimpleBlockingFederatedWriteSession>(settings, Connections, ClientSettings, GetObserver());
-//     session->Start();
-//     return std::move(session);
-
-// }
-
 std::shared_ptr<NTopic::IWriteSession>
 TFederatedTopicClient::TImpl::CreateWriteSession(const TFederatedWriteSessionSettings& settings) {
     // Split settings.MaxMemoryUsage_ by two.
@@ -41,6 +32,30 @@ TFederatedTopicClient::TImpl::CreateWriteSession(const TFederatedWriteSessionSet
     auto session = std::make_shared<TFederatedWriteSession>(splitSettings, Connections, ClientSettings, GetObserver(), ProvidedCodecs);
     session->Start();
     return std::move(session);
+}
+
+std::shared_ptr<NTopic::ISimpleBlockingWriteSession>
+TFederatedTopicClient::TImpl::CreateSimpleBlockingWriteSession(const TFederatedWriteSessionSettings& settings) {
+    auto subSettings = settings;
+    if (settings.EventHandlers_.AcksHandler_) {
+        // LOG_LAZY(Log, TLOG_WARNING, "TSimpleBlockingWriteSession: Cannot use AcksHandler, resetting.");
+        subSettings.EventHandlers_.AcksHandler({});
+    }
+    if (settings.EventHandlers_.ReadyToAcceptHandler_) {
+        // LOG_LAZY(Log, TLOG_WARNING, "TSimpleBlockingWriteSession: Cannot use ReadyToAcceptHandler, resetting.");
+        subSettings.EventHandlers_.ReadyToAcceptHandler({});
+    }
+    if (settings.EventHandlers_.SessionClosedHandler_) {
+        // LOG_LAZY(Log, TLOG_WARNING, "TSimpleBlockingWriteSession: Cannot use SessionClosedHandler, resetting.");
+        subSettings.EventHandlers_.SessionClosedHandler({});
+    }
+    if (settings.EventHandlers_.CommonHandler_) {
+        // LOG_LAZY(Log, TLOG_WARNING, "TSimpleBlockingWriteSession: Cannot use CommonHandler, resetting.");
+        subSettings.EventHandlers_.CommonHandler({});
+    }
+    InitObserver();
+    auto writer = CreateWriteSession(settings);
+    return std::make_shared<TSimpleBlockingFederatedWriteSession>(writer);
 }
 
 void TFederatedTopicClient::TImpl::InitObserver() {

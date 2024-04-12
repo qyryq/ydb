@@ -434,4 +434,92 @@ bool TFederatedWriteSessionImpl::Close(TDuration timeout) {
     }
 }
 
+
+
+
+TSimpleBlockingFederatedWriteSession::TSimpleBlockingFederatedWriteSession(std::shared_ptr<TFederatedWriteSession> writer)
+    : Writer(writer)
+    , HasBeenClosed(NThreading::NewPromise())
+    {}
+
+ui64 TSimpleBlockingFederatedWriteSession::GetInitSeqNo() {
+    return Writer->GetInitSeqNo().GetValueSync();
+}
+
+bool TSimpleBlockingFederatedWriteSession::Write(TStringBuf data, TMaybe<ui64> seqNo, TMaybe<TInstant> createTimestamp, const TDuration& timeout) {
+    auto message = NTopic::TWriteMessage(data).SeqNo(seqNo).CreateTimestamp(createTimestamp);
+    return Write(std::move(message), timeout);
+}
+
+bool TSimpleBlockingFederatedWriteSession::Write(NTopic::TWriteMessage&& message, const TDuration& timeout) {
+    if (auto token = WaitForToken(timeout)) {
+        Writer->Write(std::move(*token), std::move(message));
+        return true;
+    }
+    return false;
+}
+
+TMaybe<NTopic::TContinuationToken> TSimpleBlockingFederatedWriteSession::WaitForToken(const TDuration& timeout) {
+    TInstant const startTime = TInstant::Now();
+    TDuration remainingTime = timeout;
+
+    TMaybe<NTopic::TContinuationToken> token = Nothing();
+
+    while (remainingTime && !token && IsAlive()) {
+        Writer->WaitEvent().Wait(remainingTime);
+
+        for (auto event : Writer->GetEvents(true, Nothing())) {
+            if (auto* e = std::get_if<NTopic::TWriteSessionEvent::TReadyToAcceptEvent>(&event)) {
+                Y_ABORT_UNLESS(token.Empty());
+                token = std::move(e->ContinuationToken);
+            } else if (auto* e = std::get_if<TSessionClosedEvent>(&event)) {
+                SessionState = State::CLOSED;
+                HasBeenClosed.SetValue();
+                return Nothing();
+            }
+            // Discard TWriteSessionEvent::TAcksEvent events.
+        }
+
+        remainingTime = timeout - (TInstant::Now() - startTime);
+    }
+
+    return token;
+}
+
+NTopic::TWriterCounters::TPtr TSimpleBlockingFederatedWriteSession::GetCounters() {
+    return Writer->GetCounters();
+}
+
+bool TSimpleBlockingFederatedWriteSession::IsAlive() const {
+    with_lock(Lock) {
+        return SessionState == State::WORKING;
+    }
+}
+
+bool TSimpleBlockingFederatedWriteSession::Close(TDuration timeout) {
+    bool doClose = false;
+
+    with_lock(Lock) {
+        if (SessionState < State::CLOSING) {
+            SessionState = State::CLOSING;
+            doClose = true;
+        }
+    }
+
+    if (doClose) {
+        CloseResult = Writer->Close(std::move(timeout));
+        with_lock(Lock) {
+            if (!HasBeenClosed.HasValue()) {
+                HasBeenClosed.SetValue();
+            }
+            SessionState = State::CLOSED;
+        }
+    } else {
+        HasBeenClosed.GetFuture().Wait(timeout);
+    }
+
+    return CloseResult;
+}
+
+
 }  // namespace NYdb::NFederatedTopic
