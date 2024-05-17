@@ -1020,14 +1020,16 @@ public:
     using TPtr = std::shared_ptr<TSelf>;
 
     TDirectReadConnection(
-        const NYdb::NTopic::TReadSessionSettings settings,
         TString serverSessionId,
+        const NYdb::NTopic::TReadSessionSettings settings,
+        TCallbackContextPtr<UseMigrationProtocol> singleClusterReadSession,
         NYdbGrpc::IQueueClientContextPtr clientContext,
         IDirectReadConnectionFactoryPtr connectionFactory,
         TNodeId nodeId
     )
         : ClientContext(clientContext)
         , ReadSessionSettings(settings)
+        , SingleClusterReadSession(singleClusterReadSession)
         , ServerSessionId(serverSessionId)
         , ConnectionFactory(connectionFactory)
         , State(EState::CREATED)
@@ -1100,6 +1102,7 @@ private:
     size_t ConnectionGeneration = 0;
 
     const NYdb::NTopic::TReadSessionSettings ReadSessionSettings;
+    TCallbackContextPtr<UseMigrationProtocol> SingleClusterReadSession;
     TString ServerSessionId;
     IDirectReadConnection::TPtr Connection;
     IDirectReadConnectionFactoryPtr ConnectionFactory;
@@ -1164,6 +1167,7 @@ public:
     using IProcessor = typename IReadSessionConnectionProcessorFactory<UseMigrationProtocol>::IProcessor;
 
     friend class TPartitionStreamImpl<UseMigrationProtocol>;
+    friend class TDirectReadConnection<UseMigrationProtocol>;
 
     TSingleClusterReadSessionImpl(
         const TAReadSessionSettings<UseMigrationProtocol>& settings,
@@ -1259,6 +1263,9 @@ private:
     void ReadFromProcessorImpl(TDeferredActions<UseMigrationProtocol>& deferred); // Assumes that we're under lock.
     void WriteToProcessorImpl(TClientMessage<UseMigrationProtocol>&& req); // Assumes that we're under lock.
     void OnReadDone(NYdbGrpc::TGrpcStatus&& grpcStatus, size_t connectionGeneration);
+
+    // Direct Read
+    void OnDirectReadDone(Ydb::Topic::StreamReadMessage::ReadResponse&&, TDeferredActions<false>&);
 
     // Assumes that we're under lock.
     template<typename TMessage>
