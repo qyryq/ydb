@@ -266,7 +266,8 @@ void TSingleClusterReadSessionImpl<UseMigrationProtocol>::Start() {
             Settings,
             this->SelfContext,
             ClientContext->CreateContext(),
-            DirectConnectionFactory
+            DirectConnectionFactory,
+            Log
         );
     }
 }
