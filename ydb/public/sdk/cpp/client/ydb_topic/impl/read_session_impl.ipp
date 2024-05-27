@@ -304,12 +304,7 @@ bool TSingleClusterReadSessionImpl<UseMigrationProtocol>::Reconnect(const TPlain
         ServerMessage = std::make_shared<TServerMessage<UseMigrationProtocol>>();
         ++ConnectionGeneration;
 
-        if constexpr (!UseMigrationProtocol) {
-            if (Settings.DirectRead_ && DirectReadSessionManager) {
-                DirectReadSessionManager->Close();
-                DirectReadSessionManager = nullptr;
-            }
-        }
+        CloseDirectReadSessionManager();
 
         LOG_LAZY(Log, TLOG_DEBUG,
                  GetLogPrefix() << "In Reconnect, ReadSizeBudget = " << ReadSizeBudget
@@ -1722,6 +1717,18 @@ void TSingleClusterReadSessionImpl<UseMigrationProtocol>::AbortImpl() {
 
         if (Processor) {
             Processor->Cancel();
+        }
+
+        CloseDirectReadSessionManager();
+    }
+}
+
+template<bool UseMigrationProtocol>
+void TSingleClusterReadSessionImpl<UseMigrationProtocol>::CloseDirectReadSessionManager() {
+    if constexpr (!UseMigrationProtocol) {
+        if (Settings.DirectRead_ && DirectReadSessionManager) {
+            DirectReadSessionManager->Close();
+            DirectReadSessionManager = nullptr;
         }
     }
 }

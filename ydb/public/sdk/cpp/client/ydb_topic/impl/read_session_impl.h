@@ -1139,6 +1139,8 @@ private:
 
     void UpdateMemoryUsageStatisticsImpl();
 
+    void CloseDirectReadSessionManager();
+
 private:
     struct TPartitionCookieMapping {
         struct TCookie : public TThrRefBase {
