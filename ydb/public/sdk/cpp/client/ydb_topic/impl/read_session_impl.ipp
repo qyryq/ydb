@@ -2795,16 +2795,21 @@ void TUserRetrievedEventsInfoAccumulator<UseMigrationProtocol>::OnUserRetrievedE
 
 template<bool UseMigrationProtocol>
 void TDeferredActions<UseMigrationProtocol>::DeferReadFromProcessor(
-    const typename IDirectReadConnection::TPtr& connection,
+    const IDirectReadConnection::TPtr& connection,
     TDirectReadServerMessage* dst,
-    typename IDirectReadConnection::TReadCallback callback
+    IDirectReadConnection::TReadCallback callback
 ) {
-    Y_ASSERT(!Processor);
-    Y_ASSERT(!ReadDst);
-    Y_ASSERT(!ReadCallback);
+    Y_ASSERT(!DirectConnection);
+    Y_ASSERT(!DirectReadDst);
+    Y_ASSERT(!DirectReadCallback);
     DirectConnection = connection;
     DirectReadDst = dst;
     DirectReadCallback = std::move(callback);
+}
+
+template<bool UseMigrationProtocol>
+void TDeferredActions<UseMigrationProtocol>::DeferStartCallback(std::function<void()> callback) {
+    DirectReadStartCallback = callback;
 }
 
 template<bool UseMigrationProtocol>
@@ -2874,6 +2879,7 @@ template<bool UseMigrationProtocol>
 void TDeferredActions<UseMigrationProtocol>::DoActions() {
     Read();
     DirectRead();
+    DirectReadStart();
     StartExecutorTasks();
     AbortSession();
     Reconnect();
@@ -2905,6 +2911,13 @@ void TDeferredActions<UseMigrationProtocol>::DirectRead() {
         Y_ASSERT(DirectConnection);
         Y_ASSERT(DirectReadCallback);
         DirectConnection->Read(DirectReadDst, std::move(DirectReadCallback));
+    }
+}
+
+template<bool UseMigrationProtocol>
+void TDeferredActions<UseMigrationProtocol>::DirectReadStart() {
+    if (DirectReadStartCallback) {
+        DirectReadStartCallback();
     }
 }
 
