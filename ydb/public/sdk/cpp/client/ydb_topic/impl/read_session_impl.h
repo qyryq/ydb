@@ -1125,6 +1125,7 @@ private:
     void OnDirectReadDone(Ydb::Topic::StreamDirectReadMessage::DirectReadResponse&&, TDeferredActions<false>&);
     void ScheduleCallback(TDuration timeout, std::function<void(bool)> callback);
     bool StopPartitionSession(TPartitionSessionId);
+    void CloseDirectReadSessionManager();
 
     // Assumes that we're under lock.
     template<typename TMessage>
@@ -1147,8 +1148,6 @@ private:
     void CallCloseCallbackImpl();
 
     void UpdateMemoryUsageStatisticsImpl();
-
-    void CloseDirectReadSessionManager();
 
 private:
     struct TPartitionCookieMapping {
