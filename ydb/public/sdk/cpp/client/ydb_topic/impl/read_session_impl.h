@@ -1020,7 +1020,9 @@ class TSingleClusterReadSessionImpl : public TEnableSelfContext<TSingleClusterRe
 public:
     using TSelf = TSingleClusterReadSessionImpl<UseMigrationProtocol>;
     using TPtr = std::shared_ptr<TSelf>;
-    using IProcessor = typename IReadSessionConnectionProcessorFactory<UseMigrationProtocol>::IProcessor;
+    using IProcessorFactory = IReadSessionConnectionProcessorFactory<UseMigrationProtocol>;
+    using IProcessorFactoryPtr = std::shared_ptr<IProcessorFactory>;
+    using IProcessor = IProcessorFactory::IProcessor;
 
     friend class TPartitionStreamImpl<UseMigrationProtocol>;
     friend class TDirectReadSession;
@@ -1032,7 +1034,7 @@ public:
         const TString& clusterName,
         const TLog& log,
         std::shared_ptr<IInternalClient> connections,
-        std::shared_ptr<IReadSessionConnectionProcessorFactory<UseMigrationProtocol>> connectionFactory,
+        IProcessorFactoryPtr connectionFactory,
         std::shared_ptr<TReadSessionEventsQueue<UseMigrationProtocol>> eventsQueue,
         NYdbGrpc::IQueueClientContextPtr clientContext,
         ui64 partitionStreamIdStart,
@@ -1125,7 +1127,6 @@ private:
     void OnDirectReadDone(Ydb::Topic::StreamDirectReadMessage::DirectReadResponse&&, TDeferredActions<false>&);
     void ScheduleCallback(TDuration timeout, std::function<void(bool)> callback);
     bool StopPartitionSession(TPartitionSessionId);
-    void CloseDirectReadSessionManager();
 
     // Assumes that we're under lock.
     template<typename TMessage>
@@ -1252,8 +1253,9 @@ private:
     // to retry sending StartDirectReadPartitionSession requests after temporary errors.
     std::shared_ptr<IInternalClient> Connections;
 
-    std::shared_ptr<IReadSessionConnectionProcessorFactory<UseMigrationProtocol>> ConnectionFactory;
+    IProcessorFactoryPtr ConnectionFactory;
     IDirectReadProcessorFactoryPtr DirectReadProcessorFactory;
+
     std::shared_ptr<TReadSessionEventsQueue<UseMigrationProtocol>> EventsQueue;
     NYdbGrpc::IQueueClientContextPtr ClientContext; // Common client context.
     NYdbGrpc::IQueueClientContextPtr ConnectContext;
@@ -1275,7 +1277,7 @@ private:
     bool WaitingReadResponse = false;
     std::shared_ptr<TServerMessage<UseMigrationProtocol>> ServerMessage; // Server message to write server response to.
     THashMap<ui64, TIntrusivePtr<TPartitionStreamImpl<UseMigrationProtocol>>> PartitionStreams; // assignId -> Partition stream.
-    TDirectReadSessionManagerContextPtr DirectReadSessionManagerContextPtr; // Only for ydb_topic
+    TMaybe<TDirectReadSessionManager> DirectReadSessionManager; // Only for ydb_topic
     TPartitionCookieMapping CookieMapping;  // Only for ydb_persqueue?
     std::deque<TDecompressionQueueItem> DecompressionQueue;
     bool DataReadingSuspended = false;

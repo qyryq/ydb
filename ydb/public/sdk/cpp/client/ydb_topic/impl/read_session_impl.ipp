@@ -222,7 +222,7 @@ TSingleClusterReadSessionImpl<UseMigrationProtocol>::TSingleClusterReadSessionIm
     NYdbGrpc::IQueueClientContextPtr clientContext,
     ui64 partitionStreamIdStart,
     ui64 partitionStreamIdStep,
-    IDirectReadConnectionFactoryPtr directConnectionFactory
+    IDirectReadProcessorFactoryPtr directReadProcessorFactory
 )
     : Settings(settings)
     , Database(database)
@@ -233,7 +233,7 @@ TSingleClusterReadSessionImpl<UseMigrationProtocol>::TSingleClusterReadSessionIm
     , PartitionStreamIdStep(partitionStreamIdStep)
     , Connections(connections)
     , ConnectionFactory(std::move(connectionFactory))
-    , DirectConnectionFactory(std::move(directConnectionFactory))
+    , DirectReadProcessorFactory(std::move(directReadProcessorFactory))
     , EventsQueue(std::move(eventsQueue))
     , ClientContext(std::move(clientContext))
     , CookieMapping()
@@ -306,7 +306,9 @@ bool TSingleClusterReadSessionImpl<UseMigrationProtocol>::Reconnect(const TPlain
         ServerMessage = std::make_shared<TServerMessage<UseMigrationProtocol>>();
         ++ConnectionGeneration;
 
-        CloseDirectReadSessionManager();
+        if constexpr (!UseMigrationProtocol) {
+            DirectReadSessionManager.Clear();
+        }
 
         LOG_LAZY(Log, TLOG_DEBUG,
                  GetLogPrefix() << "In Reconnect, ReadSizeBudget = " << ReadSizeBudget
@@ -1360,8 +1362,8 @@ template <>
 template <>
 inline void TSingleClusterReadSessionImpl<false>::OnReadDoneImpl(
     Ydb::Topic::StreamReadMessage::InitResponse&& msg,
-    TDeferredActions<false>& deferred) {
-
+    TDeferredActions<false>& deferred
+) {
     Y_ABORT_UNLESS(Lock.IsLocked());
     Y_UNUSED(deferred);
 
@@ -1369,14 +1371,15 @@ inline void TSingleClusterReadSessionImpl<false>::OnReadDoneImpl(
 
     ServerSessionId = msg.session_id();
     LOG_LAZY(Log, TLOG_INFO, GetLogPrefix() << "Server session id: " << ServerSessionId);
+
     if (Settings.DirectRead_) {
-        Y_ABORT_UNLESS(DirectReadSessionManagerContextPtr == nullptr);
-        DirectReadSessionManagerContextPtr = MakeWithCallbackContext<TDirectReadSessionManager>(
+        Y_ABORT_UNLESS(!DirectReadSessionManager.Defined());
+        DirectReadSessionManager = TDirectReadSessionManager(
             ServerSessionId,
             Settings,
             this->SelfContext,
             ClientContext->CreateContext(),
-            DirectConnectionFactory,
+            DirectReadProcessorFactory,
             Log
         );
     }
@@ -1409,12 +1412,11 @@ inline void TSingleClusterReadSessionImpl<false>::OnReadDoneImpl(
     }
 
     if (Settings.DirectRead_) {
-        if (auto m = DirectReadSessionManagerContextPtr->LockShared()) {
-            m->StartPartitionSession({
-                .PartitionSessionId = static_cast<TPartitionSessionId>(partitionSessionId),
-                .Location = TPartitionLocation(msg.partition_location())
-            });
-        }
+        Y_ABORT_UNLESS(DirectReadSessionManager.Defined());
+        DirectReadSessionManager->StartPartitionSession({
+            .PartitionSessionId = static_cast<TPartitionSessionId>(partitionSessionId),
+            .Location = TPartitionLocation(msg.partition_location()),
+        });
     }
 
     partitionSession = MakeIntrusive<TPartitionStreamImpl<false>>(
@@ -1456,9 +1458,8 @@ inline void TSingleClusterReadSessionImpl<false>::OnReadDoneImpl(
     // TODO(qyryq) Do we need to store generation/nodeid info in TSingleClusterReadSessionImpl?
     auto id = it->second->GetPartitionSessionId();
     if (Settings.DirectRead_) {
-        if (auto m = DirectReadSessionManagerContextPtr->LockShared()) {
-            m->UpdatePartitionSession(id, TPartitionLocation(msg.partition_location()));
-        }
+        Y_ABORT_UNLESS(DirectReadSessionManager.Defined());
+        DirectReadSessionManager->UpdatePartitionSession(id, TPartitionLocation(msg.partition_location()));
     }
 }
 
@@ -1479,9 +1480,8 @@ inline void TSingleClusterReadSessionImpl<false>::OnReadDoneImpl(
     bool pushRes = true;
     if (!msg.graceful()) {
         if (Settings.DirectRead_) {
-            if (auto m = DirectReadSessionManagerContextPtr->LockShared()) {
-                m->StopPartitionSession(msg.partition_session_id());
-            }
+            Y_ABORT_UNLESS(DirectReadSessionManager.Defined());
+            DirectReadSessionManager->StopPartitionSession(msg.partition_session_id());
         }
         PartitionStreams.erase(msg.partition_session_id());
         pushRes = EventsQueue->PushEvent(
@@ -1490,9 +1490,8 @@ inline void TSingleClusterReadSessionImpl<false>::OnReadDoneImpl(
             deferred);
     } else {
         if (Settings.DirectRead_) {
-            if (auto m = DirectReadSessionManagerContextPtr->LockShared()) {
-                m->StopPartitionSessionGracefully(msg.partition_session_id(), msg.committed_offset(), msg.last_direct_read_id());
-            }
+            Y_ABORT_UNLESS(DirectReadSessionManager.Defined());
+            DirectReadSessionManager->StopPartitionSessionGracefully(msg.partition_session_id(), msg.committed_offset(), msg.last_direct_read_id());
             return;
         }
         pushRes = EventsQueue->PushEvent(
@@ -1529,9 +1528,8 @@ inline void TSingleClusterReadSessionImpl<false>::OnReadDoneImpl(
     childPartitionIds.insert(childPartitionIds.end(), msg.child_partition_ids().begin(), msg.child_partition_ids().end());
 
     if (Settings.DirectRead_) {
-        if (auto m = DirectReadSessionManagerContextPtr->LockShared()) {
-            m->StopPartitionSession(msg.partition_session_id());
-        }
+        Y_ABORT_UNLESS(DirectReadSessionManager.Defined());
+        DirectReadSessionManager->StopPartitionSession(msg.partition_session_id());
     }
 
     bool pushRes = EventsQueue->PushEvent(
@@ -1758,19 +1756,8 @@ void TSingleClusterReadSessionImpl<UseMigrationProtocol>::AbortImpl() {
             Processor->Cancel();
         }
 
-        CloseDirectReadSessionManager();
-    }
-}
-
-template<bool UseMigrationProtocol>
-void TSingleClusterReadSessionImpl<UseMigrationProtocol>::CloseDirectReadSessionManager() {
-    if constexpr (!UseMigrationProtocol) {
-        if (Settings.DirectRead_ && DirectReadSessionManagerContextPtr) {
-            if (auto m = DirectReadSessionManagerContextPtr->LockShared()) {
-                m->Close();
-            }
-            DirectReadSessionManagerContextPtr->Cancel();
-            DirectReadSessionManagerContextPtr = nullptr;
+        if constexpr (!UseMigrationProtocol) {
+            DirectReadSessionManager.Clear();
         }
     }
 }
