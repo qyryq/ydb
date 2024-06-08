@@ -2835,6 +2835,12 @@ void TDeferredActions<UseMigrationProtocol>::DeferScheduleCallback(TDuration del
 }
 
 template<bool UseMigrationProtocol>
+void TDeferredActions<UseMigrationProtocol>::DeferCallback(std::function<void()> callback) {
+    Y_ASSERT(!DirectReadActions.Callback);
+    DirectReadActions.Callback = std::move(callback);
+}
+
+template<bool UseMigrationProtocol>
 void TDeferredActions<UseMigrationProtocol>::DeferReadFromProcessor(const typename IProcessor<UseMigrationProtocol>::TPtr& processor,
                                               TServerMessage<UseMigrationProtocol>* dst,
                                               typename IProcessor<UseMigrationProtocol>::TReadCallback callback)
@@ -2902,6 +2908,7 @@ void TDeferredActions<UseMigrationProtocol>::DoActions() {
     Read();
     DirectRead();
     DirectReadScheduleCallback();
+    DirectReadCallback();
     StartExecutorTasks();
     AbortSession();
     Reconnect();
@@ -2946,6 +2953,14 @@ void TDeferredActions<UseMigrationProtocol>::DirectReadScheduleCallback() {
         if (auto s = scheduled->ContextPtr->LockShared()) {
             s->ScheduleCallback(scheduled->Delay, scheduled->Callback);
         }
+    }
+}
+
+template<bool UseMigrationProtocol>
+void TDeferredActions<UseMigrationProtocol>::DirectReadCallback() {
+    auto& callback = DirectReadActions.Callback;
+    if (callback.Defined()) {
+        (*callback)();
     }
 }
 
