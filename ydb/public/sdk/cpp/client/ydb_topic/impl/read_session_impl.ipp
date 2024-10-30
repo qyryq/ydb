@@ -31,12 +31,6 @@
 namespace NYdb::NTopic {
 
 static const bool RangesMode = !GetEnv("PQ_OFFSET_RANGES_MODE").empty();
-static bool AllowDirectRead = false;
-
-template<>
-inline void TSingleClusterReadSessionImpl<false>::SetAllowDirectRead() {
-    AllowDirectRead = true;
-}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // TPartitionStreamImpl
@@ -510,7 +504,7 @@ void TSingleClusterReadSessionImpl<UseMigrationProtocol>::OnConnect(
 
 template<>
 inline bool TSingleClusterReadSessionImpl<false>::IsDirectRead() {
-    return AllowDirectRead && Settings.DirectRead_;
+    return Settings.DirectRead_;
 }
 
 
@@ -1419,7 +1413,7 @@ inline void TSingleClusterReadSessionImpl<false>::StopPartitionSessionImpl(
         }
 
         // Call from a direct session, that closed itself, so we don't need to stop it,
-        // but only need to erase it from manager.
+        // but only need to erase it from the manager.
         DirectReadSessionManager->ErasePartitionSession(partitionSessionId);
     }
 

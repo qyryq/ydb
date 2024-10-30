@@ -75,8 +75,6 @@ struct TMockProcessorFactory : public ISessionConnectionProcessorFactory<TReques
         OnCreateProcessor(++CreateCallsCount);
     }
 
-    MOCK_METHOD(void, ValidateConnectTimeout, (TDuration), ());
-
     // Handler is called in CreateProcessor() method after parameter validation.
     MOCK_METHOD(void, OnCreateProcessor, (size_t callNumber)); // 1-based
 
@@ -297,6 +295,9 @@ struct TMockReadSessionProcessor : public TMockProcessorFactory<Ydb::Topic::Stre
         case FromClient::kReadRequest:
             OnReadRequest(request.read_request());
             break;
+        case FromClient::kCommitOffsetRequest:
+            OnCommitOffsetRequest(request.commit_offset_request());
+            break;
         case FromClient::kDirectReadAck:
             OnDirectReadAck(request.direct_read_ack());
             break;
@@ -316,6 +317,7 @@ struct TMockReadSessionProcessor : public TMockProcessorFactory<Ydb::Topic::Stre
     MOCK_METHOD(void, OnInitRequest, (const Ydb::Topic::StreamReadMessage::InitRequest&), ());
     MOCK_METHOD(void, OnReadRequest, (const Ydb::Topic::StreamReadMessage::ReadRequest&), ());
     MOCK_METHOD(void, OnDirectReadAck, (const Ydb::Topic::StreamReadMessage::DirectReadAck&), ());
+    MOCK_METHOD(void, OnCommitOffsetRequest, (const Ydb::Topic::StreamReadMessage::CommitOffsetRequest&), ());
     MOCK_METHOD(void, OnStartPartitionSessionResponse, (const Ydb::Topic::StreamReadMessage::StartPartitionSessionResponse&), ());
     MOCK_METHOD(void, OnStopPartitionSessionResponse, (const Ydb::Topic::StreamReadMessage::StopPartitionSessionResponse&), ());
 
@@ -500,7 +502,7 @@ struct TMockDirectReadSessionProcessor : public TMockProcessorFactory<TDirectRea
     }
 
     void Read(TDirectReadServerMessage* response, TReadCallback callback) override {
-        Cerr << "XXXXX Read\n";
+        Cerr << (TStringBuilder() << "XXXXX Read " << response->DebugString() << "\n");
         NYdbGrpc::TGrpcStatus status;
         TReadCallback cb;
         with_lock (Lock) {
@@ -584,7 +586,7 @@ struct TMockDirectReadSessionProcessor : public TMockProcessorFactory<TDirectRea
     }
 
     void AddServerResponse(TServerReadInfo result) {
-        Cerr << "XXXXX AddServerResponse\n";
+        Cerr << (TStringBuilder() << "XXXXX AddServerResponse " << result.Response.DebugString() << "\n");
         NYdbGrpc::TGrpcStatus status;
         TReadCallback callback;
         with_lock (Lock) {
@@ -831,7 +833,6 @@ TDirectReadSession* TDirectReadSessionImplTestSetup::GetDirectReadSession(IDirec
 
 class TDirectReadTestsFixture : public NUnitTest::TBaseFixture {
     void SetUp(NUnitTest::TTestContext&) override {
-        TSingleClusterReadSessionImpl<false>::SetAllowDirectRead();
     }
 };
 
@@ -1114,8 +1115,7 @@ Y_UNIT_TEST_SUITE_F(DirectReadWithControlSession, TDirectReadTestsFixture) {
             TMaybe<TReadSessionEvent::TEvent> event = setup.EventsQueue->GetEvent(true);
             UNIT_ASSERT(event);
             UNIT_ASSERT_EVENT_TYPE(*event, TReadSessionEvent::TStartPartitionSessionEvent);
-            auto e = std::get_if<TReadSessionEvent::TStartPartitionSessionEvent>(&*event);
-            e->Confirm();
+            std::get<TReadSessionEvent::TStartPartitionSessionEvent>(*event).Confirm();
         }
 
         setup.AddControlResponse(TMockReadSessionProcessor::TServerReadInfo()
@@ -1127,11 +1127,12 @@ Y_UNIT_TEST_SUITE_F(DirectReadWithControlSession, TDirectReadTestsFixture) {
         setup.AddDirectReadResponse(TMockDirectReadSessionProcessor::TServerReadInfo()
             .StartDirectReadPartitionSessionResponse(startPartitionSessionRequest.PartitionSessionId));
 
-        size_t offset = 0;
+        size_t offset = 0, i = 0;
 
-        for (size_t i = 1; i < stopPartitionSessionRequest.LastDirectReadId; ++i) {
+        // Verify that the session receives data sent to direct read session:
+        for (size_t directReadId = 1; directReadId < stopPartitionSessionRequest.LastDirectReadId; ++directReadId) {
             auto resp = TMockDirectReadSessionProcessor::TServerReadInfo()
-                .PartitionData(startPartitionSessionRequest.PartitionSessionId, i)
+                .PartitionData(startPartitionSessionRequest.PartitionSessionId, directReadId)
                 // TODO(qyryq) Test with compression!
                 // .Batch("producer-id-1", Ydb::Topic::Codec::CODEC_ZSTD);
                 .Batch("producer-id-1", Ydb::Topic::Codec::CODEC_RAW);
@@ -1140,17 +1141,21 @@ Y_UNIT_TEST_SUITE_F(DirectReadWithControlSession, TDirectReadTestsFixture) {
             ++offset;
             resp.Message(offset, TStringBuilder() << "message-" << offset, offset);
             ++offset;
-
             setup.AddDirectReadResponse(resp);
-        }
 
-        // Verify that the session receives data sent to direct read session:
-        for (size_t i = 0; i < offset; ) {
             TMaybe<TReadSessionEvent::TEvent> event = setup.EventsQueue->GetEvent(true);
             UNIT_ASSERT(event);
             UNIT_ASSERT_EVENT_TYPE(*event, TReadSessionEvent::TDataReceivedEvent);
-            auto e = std::get_if<TReadSessionEvent::TDataReceivedEvent>(&*event);
-            i += e->GetMessagesCount();
+            auto& e = std::get<TReadSessionEvent::TDataReceivedEvent>(*event);
+            i += e.GetMessagesCount();
+        }
+
+        while (i < offset) {
+            TMaybe<TReadSessionEvent::TEvent> event = setup.EventsQueue->GetEvent(true);
+            UNIT_ASSERT(event);
+            UNIT_ASSERT_EVENT_TYPE(*event, TReadSessionEvent::TDataReceivedEvent);
+            auto& e = std::get<TReadSessionEvent::TDataReceivedEvent>(*event);
+            i += e.GetMessagesCount();
         }
 
         {
@@ -1253,8 +1258,7 @@ Y_UNIT_TEST_SUITE_F(DirectReadWithControlSession, TDirectReadTestsFixture) {
             TMaybe<TReadSessionEvent::TEvent> event = setup.EventsQueue->GetEvent(true);
             UNIT_ASSERT(event);
             UNIT_ASSERT_EVENT_TYPE(*event, TReadSessionEvent::TStartPartitionSessionEvent);
-            auto e = std::get_if<TReadSessionEvent::TStartPartitionSessionEvent>(&*event);
-            e->Confirm();
+            std::get<TReadSessionEvent::TStartPartitionSessionEvent>(*event).Confirm();
         }
 
         {
@@ -1267,11 +1271,12 @@ Y_UNIT_TEST_SUITE_F(DirectReadWithControlSession, TDirectReadTestsFixture) {
             setup.AddDirectReadResponse(r.StartDirectReadPartitionSessionResponse(startPartitionSessionRequest.PartitionSessionId));
         }
 
-        i64 offset = 0;
+        i64 offset = 0, i = 0;
 
-        for (size_t i = 1; i < 5; ++i) {
+        // Verify that the session receives data sent to direct read session:
+        for (size_t directReadId = 1; directReadId < 5; ++directReadId) {
             auto resp = TMockDirectReadSessionProcessor::TServerReadInfo();
-            resp.PartitionData(startPartitionSessionRequest.PartitionSessionId, i)
+            resp.PartitionData(startPartitionSessionRequest.PartitionSessionId, directReadId)
                 // TODO(qyryq) Test with compression!
                 // .Batch("producer-id-1", Ydb::Topic::Codec::CODEC_ZSTD);
                 .Batch("producer-id-1", Ydb::Topic::Codec::CODEC_RAW);
@@ -1280,18 +1285,22 @@ Y_UNIT_TEST_SUITE_F(DirectReadWithControlSession, TDirectReadTestsFixture) {
             ++offset;
             resp.Message(offset, TStringBuilder() << "message-" << offset, offset);
             ++offset;
-
             setup.AddDirectReadResponse(resp);
-        }
 
-        // Verify that the session receives data sent to direct read session:
-        for (i64 i = 0; i < offset; ) {
             TMaybe<TReadSessionEvent::TEvent> event = setup.EventsQueue->GetEvent(true);
             UNIT_ASSERT(event);
             UNIT_ASSERT_EVENT_TYPE(*event, TReadSessionEvent::TDataReceivedEvent);
-            auto e = std::get_if<TReadSessionEvent::TDataReceivedEvent>(&*event);
-            i += e->GetMessagesCount();
-            e->Commit();
+            auto& e = std::get<TReadSessionEvent::TDataReceivedEvent>(*event);
+            i += e.GetMessagesCount();
+            e.Commit();
+        }
+
+        while (i < offset) {
+            TMaybe<TReadSessionEvent::TEvent> event = setup.EventsQueue->GetEvent(true);
+            UNIT_ASSERT(event);
+            UNIT_ASSERT_EVENT_TYPE(*event, TReadSessionEvent::TDataReceivedEvent);
+            auto& e = std::get<TReadSessionEvent::TDataReceivedEvent>(*event);
+            i += e.GetMessagesCount();
         }
 
         {
