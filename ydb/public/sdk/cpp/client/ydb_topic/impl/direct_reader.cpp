@@ -501,11 +501,16 @@ void TDirectReadSession::SendStartRequestImpl(TPartitionSessionId id, bool delay
 void TDirectReadSession::SendStartRequestImpl(TDirectReadPartitionSession& partitionSession, bool delayedCall) {
     Y_ABORT_UNLESS(Lock.IsLocked());
 
-    LOG_LAZY(Log, TLOG_DEBUG, GetLogPrefix() << "SendStartRequestImpl");
+    LOG_LAZY(Log, TLOG_DEBUG, GetLogPrefix() << "SendStartRequestImpl partitionSession.State=" << int(partitionSession.State)
+                                             << " delayedCall=" << delayedCall);
 
     bool isImmediateCall = partitionSession.State == TDirectReadPartitionSession::EState::IDLE && !delayedCall;
     bool isDelayedCall = partitionSession.State == TDirectReadPartitionSession::EState::DELAYED && delayedCall;
-    Y_ABORT_UNLESS(isImmediateCall || isDelayedCall);
+
+    if (!isImmediateCall && !isDelayedCall) {
+        LOG_LAZY(Log, TLOG_DEBUG, GetLogPrefix() << "SendStartRequestImpl bail out 0, not an immediate nor a delayed call");
+        return;
+    }
 
     if (State < EState::WORKING) {
         if (isDelayedCall) {
