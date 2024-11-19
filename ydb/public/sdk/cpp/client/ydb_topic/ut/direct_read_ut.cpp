@@ -66,6 +66,7 @@ struct TMockProcessorFactory : public ISessionConnectionProcessorFactory<TReques
         ConnectTimeoutCallback = connectTimeoutCallback;
 
         Y_UNUSED(requestSettings);
+        // TODO Check requestSettings.PreferredEndpoint.GetNodeId()?
         UNIT_ASSERT(connectContext);
         UNIT_ASSERT(connectTimeout);
         UNIT_ASSERT(connectTimeoutContext);
@@ -502,16 +503,15 @@ struct TMockDirectReadSessionProcessor : public TMockProcessorFactory<TDirectRea
     }
 
     void Read(TDirectReadServerMessage* response, TReadCallback callback) override {
-        Cerr << (TStringBuilder() << "XXXXX Read 1 " << response->DebugString() << "\n");
         NYdbGrpc::TGrpcStatus status;
         TReadCallback cb;
         with_lock (Lock) {
+            Cerr << (TStringBuilder() << "XXXXX Read 1 " << response->DebugString() << "\n");
             UNIT_ASSERT(!ActiveRead);
             ActiveRead.Callback = std::move(callback);
             ActiveRead.Dst = response;
-            Cerr << (TStringBuilder() << "XXXXX Read 2 " << response->DebugString() << "\n");
-            if (!ReadResponses.empty()) {
-                Cerr << (TStringBuilder() << "XXXXX Read 3 " << response->DebugString() << "\n");
+                if (!ReadResponses.empty()) {
+                Cerr << (TStringBuilder() << "XXXXX Read 2 " << response->DebugString() << "\n");
                 *ActiveRead.Dst = ReadResponses.front().Response;
                 ActiveRead.Dst = nullptr;
                 status = std::move(ReadResponses.front().Status);
@@ -520,7 +520,7 @@ struct TMockDirectReadSessionProcessor : public TMockProcessorFactory<TDirectRea
             }
         }
         if (cb) {
-            Cerr << (TStringBuilder() << "XXXXX Read 4 " << response->DebugString() << "\n");
+            Cerr << (TStringBuilder() << "XXXXX Read 3 " << response->DebugString() << "\n");
             cb(std::move(status));
         }
     }
@@ -589,10 +589,10 @@ struct TMockDirectReadSessionProcessor : public TMockProcessorFactory<TDirectRea
     }
 
     void AddServerResponse(TServerReadInfo result) {
-        Cerr << (TStringBuilder() << "XXXXX AddServerResponse 1 " << result.Response.DebugString() << "\n");
         NYdbGrpc::TGrpcStatus status;
         TReadCallback callback;
         with_lock (Lock) {
+            Cerr << (TStringBuilder() << "XXXXX AddServerResponse 1 " << result.Response.DebugString() << "\n");
             ReadResponses.emplace(std::move(result));
             if (ActiveRead) {
                 Cerr << (TStringBuilder() << "XXXXX AddServerResponse 2\n");
@@ -672,6 +672,7 @@ public:
 
     TSingleClusterReadSessionImpl<false>* GetControlSession();
     TDirectReadSession* GetDirectReadSession(IDirectReadSessionControlCallbacks::TPtr);
+    void WaitForWorkingDirectReadSession();
 
     std::shared_ptr<TReadSessionEventsQueue<false>> GetEventsQueue();
     IExecutor::TPtr GetDefaultExecutor();
@@ -834,6 +835,12 @@ TDirectReadSession* TDirectReadSessionImplTestSetup::GetDirectReadSession(IDirec
         DirectReadSessionPtr = DirectReadSessionContextPtr->TryGet();
     }
     return DirectReadSessionPtr.get();
+}
+
+void TDirectReadSessionImplTestSetup::WaitForWorkingDirectReadSession() {
+    while (DirectReadSessionPtr->State != TDirectReadSession::EState::WORKING) {
+        Sleep(TDuration::MilliSeconds(10));
+    }
 }
 
 class TDirectReadTestsFixture : public NUnitTest::TBaseFixture {
@@ -1729,6 +1736,9 @@ Y_UNIT_TEST_SUITE_F(DirectReadSession, TDirectReadTestsFixture) {
         gotInitRequest.GetFuture().Wait();
         secondProcessor->AddServerResponse(TMockDirectReadSessionProcessor::TServerReadInfo()
             .InitResponse());
+
+        // Ensure that the callback is called after the direct session got InitResponse.
+        setup.WaitForWorkingDirectReadSession();
 
         callback();
 

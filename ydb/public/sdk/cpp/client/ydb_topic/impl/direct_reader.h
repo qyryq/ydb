@@ -89,9 +89,12 @@ public:
     bool TransitionTo(EState);
 };
 
+namespace NTests { class TDirectReadSessionImplTestSetup; }
+
 // One TDirectReadSession instance comprises multiple TDirectReadPartitionSessions.
 // It wraps a gRPC connection to a particular node, where the partition sessions live.
 class TDirectReadSession : public TEnableSelfContext<TDirectReadSession> {
+    friend class NTests::TDirectReadSessionImplTestSetup;
 public:
     using TSelf = TDirectReadSession;
     using TPtr = std::shared_ptr<TSelf>;
