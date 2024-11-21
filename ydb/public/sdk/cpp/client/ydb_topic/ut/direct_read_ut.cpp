@@ -1347,6 +1347,56 @@ Y_UNIT_TEST_SUITE_F(DirectReadWithControlSession, TDirectReadTestsFixture) {
 } // Y_UNIT_TEST_SUITE_F(DirectReadWithControlSession)
 
 
+Y_UNIT_TEST_SUITE(DirectReadWithServer) {
+
+    Y_UNIT_TEST(WriteRead) {
+        TTopicSdkTestSetup setup(TEST_CASE_NAME);
+        TTopicClient client = setup.MakeClient();
+
+        size_t messageCount = 100;
+
+        {
+            Cerr << ">>> open write session " << Endl;
+            auto writer = client.CreateSimpleBlockingWriteSession(
+                TWriteSessionSettings()
+                    .Path(TEST_TOPIC)
+                    .ProducerId(TEST_MESSAGE_GROUP_ID)
+                    .MessageGroupId(TEST_MESSAGE_GROUP_ID));
+
+            for (size_t i = 0; i < messageCount; ++i) {
+                UNIT_ASSERT(writer->Write(TStringBuilder() << "message-" << i));
+            }
+            writer->Close();
+            Cerr << ">>> write session closed" << Endl;
+        }
+
+        {
+            auto readSettings = TReadSessionSettings()
+                .ConsumerName(TEST_CONSUMER)
+                .AppendTopics(TEST_TOPIC)
+                .DirectRead(true);
+            auto readSession = client.CreateReadSession(readSettings);
+
+            auto event = readSession->GetEvent(true);
+            UNIT_ASSERT(event.Defined());
+
+            auto& startPartitionSession = std::get<TReadSessionEvent::TStartPartitionSessionEvent>(*event);
+            startPartitionSession.Confirm();
+
+            event = readSession->GetEvent(true);
+            UNIT_ASSERT(event.Defined());
+
+            auto& dataReceived = std::get<TReadSessionEvent::TDataReceivedEvent>(*event);
+            dataReceived.Commit();
+
+            auto& messages = dataReceived.GetMessages();
+            UNIT_ASSERT(messages.size() == messageCount);
+            UNIT_ASSERT(messages[0].GetData() == "message-0");
+        }
+    }
+}
+
+
 Y_UNIT_TEST_SUITE_F(DirectReadSession, TDirectReadTestsFixture) {
 
     /*
