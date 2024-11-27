@@ -117,6 +117,7 @@ ELogPriority TClientCommand::TConfig::VerbosityLevelToELogPriority(TClientComman
         case TClientCommand::TConfig::EVerbosityLevel::NONE:
             return ELogPriority::TLOG_EMERG;
         case TClientCommand::TConfig::EVerbosityLevel::DEBUG:
+            return ELogPriority::TLOG_RESOURCES;
             return ELogPriority::TLOG_DEBUG;
         case TClientCommand::TConfig::EVerbosityLevel::INFO:
             return ELogPriority::TLOG_INFO;

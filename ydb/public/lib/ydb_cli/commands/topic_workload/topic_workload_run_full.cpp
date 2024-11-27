@@ -64,7 +64,10 @@ void TCommandWorkloadTopicRunFull::Config(TConfig& config)
         .Optional()
         .DefaultValue((TStringBuilder() << NTopic::ECodec::RAW))
         .StoreMappedResultT<TString>(&Scenario.Codec, &TCommandWorkloadTopicParams::StrToCodec);
-    config.Opts->AddLongOption("direct", "Direct write to a partition node.")
+    config.Opts->AddLongOption("direct-read", "Direct read from a partition node.")
+        .Hidden()
+        .StoreTrue(&Scenario.UseDirectRead);
+    config.Opts->AddLongOption("direct-write", "Direct write to a partition node.")
         .Hidden()
         .StoreTrue(&Scenario.Direct);
 

@@ -75,6 +75,7 @@ public:
     bool OnlyTopicInTx = false;
     bool OnlyTableInTx = false;
     bool UseTableSelect = true;
+    bool UseDirectRead = false;
     bool ReadWithoutConsumer = false;
 
 protected:

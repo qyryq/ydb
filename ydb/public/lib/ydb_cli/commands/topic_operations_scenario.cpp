@@ -229,6 +229,7 @@ void TTopicOperationsScenario::StartConsumerThreads(std::vector<std::future<void
                 .UseTopicCommit = OnlyTableInTx,
                 .UseTableSelect = UseTableSelect && !OnlyTopicInTx,
                 .UseTableUpsert = !OnlyTopicInTx,
+                .UseDirectRead = UseDirectRead,
                 .ReadWithoutConsumer = ReadWithoutConsumer,
                 .CommitPeriod = CommitPeriod,
                 .CommitMessages = CommitMessages
