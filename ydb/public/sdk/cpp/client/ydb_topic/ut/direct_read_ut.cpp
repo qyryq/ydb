@@ -1870,6 +1870,9 @@ Y_UNIT_TEST_SUITE(DirectReadWithServer) {
     */
 
     Y_UNIT_TEST(KillPQTablet) {
+        /*
+        A read session should keep working if a partition tablet is killed and moved to another node.
+        */
         auto setup = TTopicSdkTestSetup(TEST_CASE_NAME);
         auto client = setup.MakeClient();
         auto nextMessageId = 0;

@@ -791,6 +791,11 @@ public:
                                  TVector<typename TADataReceivedEvent<UseMigrationProtocol>::TCompressedMessage>& compressedMessages,
                                  TUserRetrievedEventsInfoAccumulator<UseMigrationProtocol>& accumulator);
 
+
+    void SetLocation(TPartitionLocation location) {
+        TAPartitionStream<false>::Location = location;
+    }
+
     TMutex& GetLock() {
         return Lock;
     }
