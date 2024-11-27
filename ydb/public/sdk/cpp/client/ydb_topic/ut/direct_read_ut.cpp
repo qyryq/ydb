@@ -1347,60 +1347,10 @@ Y_UNIT_TEST_SUITE_F(DirectReadWithControlSession, TDirectReadTestsFixture) {
 } // Y_UNIT_TEST_SUITE_F(DirectReadWithControlSession)
 
 
-Y_UNIT_TEST_SUITE(DirectReadWithServer) {
-
-    Y_UNIT_TEST(WriteRead) {
-        TTopicSdkTestSetup setup(TEST_CASE_NAME);
-        TTopicClient client = setup.MakeClient();
-
-        size_t messageCount = 100;
-
-        {
-            Cerr << ">>> open write session " << Endl;
-            auto writer = client.CreateSimpleBlockingWriteSession(
-                TWriteSessionSettings()
-                    .Path(TEST_TOPIC)
-                    .ProducerId(TEST_MESSAGE_GROUP_ID)
-                    .MessageGroupId(TEST_MESSAGE_GROUP_ID));
-
-            for (size_t i = 0; i < messageCount; ++i) {
-                UNIT_ASSERT(writer->Write(TStringBuilder() << "message-" << i));
-            }
-            writer->Close();
-            Cerr << ">>> write session closed" << Endl;
-        }
-
-        {
-            auto readSettings = TReadSessionSettings()
-                .ConsumerName(TEST_CONSUMER)
-                .AppendTopics(TEST_TOPIC)
-                .DirectRead(true);
-            auto readSession = client.CreateReadSession(readSettings);
-
-            auto event = readSession->GetEvent(true);
-            UNIT_ASSERT(event.Defined());
-
-            auto& startPartitionSession = std::get<TReadSessionEvent::TStartPartitionSessionEvent>(*event);
-            startPartitionSession.Confirm();
-
-            event = readSession->GetEvent(true);
-            UNIT_ASSERT(event.Defined());
-
-            auto& dataReceived = std::get<TReadSessionEvent::TDataReceivedEvent>(*event);
-            dataReceived.Commit();
-
-            auto& messages = dataReceived.GetMessages();
-            UNIT_ASSERT(messages.size() == messageCount);
-            UNIT_ASSERT(messages[0].GetData() == "message-0");
-        }
-    }
-}
-
-
 Y_UNIT_TEST_SUITE_F(DirectReadSession, TDirectReadTestsFixture) {
 
     /*
-    This suite test TDirectReadSession in isolation, without control session.
+    This suite tests TDirectReadSession in isolation, without control session.
     */
 
     Y_UNIT_TEST(InitAndStartPartitionSession) {
@@ -1910,4 +1860,84 @@ Y_UNIT_TEST_SUITE_F(DirectReadSession, TDirectReadTestsFixture) {
 
 } // Y_UNIT_TEST_SUITE_F(DirectReadSession)
 
+
+Y_UNIT_TEST_SUITE(DirectReadWithServer) {
+
+    /*
+    This suite tests direct read session interaction with server.
+
+    It complements tests from basic_usage_ut.cpp etc, as we run them with direct read disabled/enabled.
+    */
+
+    Y_UNIT_TEST(KillPQTablet) {
+        auto setup = TTopicSdkTestSetup(TEST_CASE_NAME);
+        auto client = setup.MakeClient();
+        auto nextMessageId = 0;
+
+        auto writeMessages = [&](size_t n) {
+            auto writer = client.CreateSimpleBlockingWriteSession(TWriteSessionSettings()
+                .Path(TEST_TOPIC)
+                .MessageGroupId(TEST_MESSAGE_GROUP_ID)
+                .ProducerId(TEST_MESSAGE_GROUP_ID));
+
+            for (size_t i = 0; i < n; ++i, ++nextMessageId) {
+                auto res = writer->Write(TStringBuilder() << "message-" << nextMessageId);
+                UNIT_ASSERT(res);
+            }
+
+            writer->Close();
+        };
+
+        writeMessages(1);
+
+        auto gotFirstMessage = NThreading::NewPromise();
+        auto gotSecondMessage = NThreading::NewPromise();
+
+        auto readerSettings = TReadSessionSettings()
+            .ConsumerName(TEST_CONSUMER)
+            .AppendTopics(TEST_TOPIC)
+            .DirectRead(true);
+
+        TIntrusivePtr<TPartitionSession> partitionSession;
+
+        readerSettings.EventHandlers_
+            .DataReceivedHandler([&](TReadSessionEvent::TDataReceivedEvent& e) {
+                switch (e.GetMessages()[0].GetSeqNo()) {
+                case 1:
+                    gotFirstMessage.SetValue();
+                    break;
+                case 2:
+                    gotSecondMessage.SetValue();
+                    break;
+                }
+                e.Commit();
+            })
+            .StartPartitionSessionHandler([&](TReadSessionEvent::TStartPartitionSessionEvent& e) {
+                e.Confirm();
+                partitionSession = e.GetPartitionSession();
+            })
+            ;
+
+        auto reader = client.CreateReadSession(readerSettings);
+
+        gotFirstMessage.GetFuture().Wait();
+
+        auto firstGenerationId = partitionSession->GetLocation()->GetGeneration();
+
+        setup.GetServer().KillTopicPqTablets(setup.GetTopicPath());
+
+        while (firstGenerationId == partitionSession->GetLocation()->GetGeneration()) {
+            Sleep(TDuration::MilliSeconds(100));
+        }
+
+        writeMessages(1);
+
+        gotSecondMessage.GetFuture().Wait();
+
+        reader->Close();
+    }
+
+} // Y_UNIT_TEST_SUITE_F(DirectReadWithServer)
+
 } // namespace NYdb::NTopic::NTests
+
