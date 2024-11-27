@@ -1860,6 +1860,7 @@ void TSingleClusterReadSessionImpl<UseMigrationProtocol>::Close(std::function<vo
 
             CloseCallback = std::move(callback);
 
+            DirectReadSessionManager->Close();
             Cancel(ConnectContext);
             Cancel(ConnectTimeoutContext);
             Cancel(ConnectDelayContext);
