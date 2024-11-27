@@ -607,20 +607,12 @@ void TDirectReadSession::OnReadDoneImpl(Ydb::Topic::StreamDirectReadMessage::Sta
     Y_ABORT_UNLESS(transitioned);
 }
 
-void TDirectReadSession::OnReadDoneImpl(Ydb::Topic::StreamDirectReadMessage::StopDirectReadPartitionSession&& response, TDeferredActions<false>& deferred) {
+void TDirectReadSession::OnReadDoneImpl(Ydb::Topic::StreamDirectReadMessage::StopDirectReadPartitionSession&& response, TDeferredActions<false>&) {
     Y_ABORT_UNLESS(Lock.IsLocked());
 
+    // We ignore the message and simply log it. Then wait for an UpdatePartitionSession event.
+
     LOG_LAZY(Log, TLOG_DEBUG, GetLogPrefix() << "Got StopDirectReadPartitionSession " << response.ShortDebugString());
-
-    auto partitionSessionId = response.partition_session_id();
-    auto it = PartitionSessions.find(partitionSessionId);
-    // TODO(qyryq) Simply ignore the Stop-request, if we do not have such a partition session?
-    Y_ABORT_UNLESS(it != PartitionSessions.end());
-    auto& partitionSession = it->second;
-
-    DelayStartRequestImpl(partitionSession, MakeErrorFromProto(response), deferred);
-
-    // TODO(qyryq) Send status/issues to the control session?
 }
 
 void TDirectReadSession::OnReadDoneImpl(Ydb::Topic::StreamDirectReadMessage::DirectReadResponse&& response, TDeferredActions<false>& deferred) {
