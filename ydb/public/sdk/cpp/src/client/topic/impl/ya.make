@@ -7,6 +7,8 @@ SRCS(
     common.cpp
     counters_logger.h
     deferred_commit.cpp
+    direct_reader.h
+    direct_reader.cpp
     event_handlers.cpp
     offsets_collector.cpp
     read_session_event.cpp
@@ -28,6 +30,7 @@ PEERDIR(
     library/cpp/monlib/dynamic_counters
     library/cpp/monlib/metrics
     library/cpp/string_utils/url
+    yql/essentials/public/issue
     ydb/public/sdk/cpp/src/library/persqueue/obfuscate
     ydb/public/api/grpc/draft
     ydb/public/api/grpc

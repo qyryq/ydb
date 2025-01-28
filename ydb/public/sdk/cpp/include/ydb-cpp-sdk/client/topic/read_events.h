@@ -2,6 +2,7 @@
 
 #include "codecs.h"
 #include "events_common.h"
+#include "control_plane.h"
 
 #include <util/datetime/base.h>
 
@@ -36,10 +37,19 @@ public:
         return PartitionId;
     }
 
+    TMaybe<TPartitionLocation> GetLocation() const {
+        return Location;
+    }
+
 protected:
+    // PartitionSessionId here and StreamReadMessage.PartitionSession.partition_session_id are not the same IDs!
+    // This one is generated on the client side, and the other one on the server side.
+    // Server side partition_session_id is also called AssignId, PartitionStreamId (for persqueue SDK).
     uint64_t PartitionSessionId;
+
     std::string TopicPath;
     uint64_t PartitionId;
+    TMaybe<TPartitionLocation> Location;
 };
 
 template<>

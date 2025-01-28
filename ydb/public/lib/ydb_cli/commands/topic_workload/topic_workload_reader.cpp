@@ -48,6 +48,8 @@ void TTopicWorkloadReader::ReaderLoop(TTopicWorkloadReaderParams& params, TInsta
         settings.WithoutConsumer().AppendTopics(topic);
     }
 
+    settings.DirectRead(params.UseDirectRead);
+
     if (params.UseTransactions) {
         txSupport.emplace(params.Driver, params.ReadOnlyTableName, params.TableName);
     }

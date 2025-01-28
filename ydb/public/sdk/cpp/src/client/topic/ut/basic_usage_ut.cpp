@@ -2,8 +2,9 @@
 #include "ut_utils/topic_sdk_test_setup.h"
 #include <src/client/persqueue_public/ut/ut_utils/ut_utils.h>
 
+#include <util/system/env.h>
 #include <ydb-cpp-sdk/client/topic/client.h>
- 
+
 #include <src/client/persqueue_public/persqueue.h>
 
 #include <src/client/topic/impl/common.h>
@@ -19,6 +20,8 @@
 #include <util/stream/zlib.h>
 
 #include <future>
+
+static const bool EnableDirectRead = !GetEnv("TOPIC_DIRECT_READ").empty();
 
 namespace NYdb::NTopic::NTests {
 
@@ -169,7 +172,8 @@ Y_UNIT_TEST_SUITE(BasicUsage) {
         {
             auto readSettings = TReadSessionSettings()
                 .ConsumerName(TEST_CONSUMER)
-                .AppendTopics(TEST_TOPIC);
+                .AppendTopics(TEST_TOPIC)
+                .DirectRead(EnableDirectRead);
             auto readSession = client.CreateReadSession(readSettings);
 
             auto event = readSession->GetEvent(true);
@@ -192,6 +196,10 @@ Y_UNIT_TEST_SUITE(BasicUsage) {
     }
 
     Y_UNIT_TEST(ReadWithoutConsumerWithRestarts) {
+        if (EnableDirectRead) {
+            // TODO(qyryq) Enable the test when LOGBROKER-9364 is done.
+            return;
+        }
         TTopicSdkTestSetup setup(TEST_CASE_NAME);
         auto compressor = new TSyncExecutor();
         auto decompressor = CreateThreadPoolManagedExecutor(1);
@@ -203,7 +211,8 @@ Y_UNIT_TEST_SUITE(BasicUsage) {
             .WithoutConsumer()
             .MaxMemoryUsageBytes(1_MB)
             .DecompressionExecutor(decompressor)
-            .AppendTopics(topic);
+            .AppendTopics(topic)
+            .DirectRead(EnableDirectRead);
 
         TWriteSessionSettings writeSettings;
         writeSettings
@@ -232,7 +241,8 @@ Y_UNIT_TEST_SUITE(BasicUsage) {
 
         auto readSettings = TReadSessionSettings()
             .ConsumerName(TEST_CONSUMER)
-            .AppendTopics(TEST_TOPIC);
+            .AppendTopics(TEST_TOPIC)
+            .DirectRead(EnableDirectRead);
         auto readSession = client.CreateReadSession(readSettings);
 
         auto event = readSession->GetEvent(true);
@@ -253,7 +263,10 @@ Y_UNIT_TEST_SUITE(BasicUsage) {
 
     Y_UNIT_TEST(WriteAndReadSomeMessagesWithSyncCompression) {
 
-        auto setup = std::make_shared<NPersQueue::NTests::TPersQueueYdbSdkTestSetup>(TEST_CASE_NAME);
+        auto setup = std::make_shared<NPersQueue::NTests::TPersQueueYdbSdkTestSetup>(NPersQueue::NTests::TPersQueueYdbSdkTestSetupSettings{
+            .TestCaseName = TEST_CASE_NAME,
+            .NodeCount = 1,
+        });
 
         NPersQueue::TWriteSessionSettings writeSettings;
         writeSettings.Path(setup->GetTestTopic()).MessageGroupId(TEST_MESSAGE_GROUP_ID);
@@ -297,7 +310,8 @@ Y_UNIT_TEST_SUITE(BasicUsage) {
         readSettings
             .ConsumerName(setup->GetTestConsumer())
             .MaxMemoryUsageBytes(1_MB)
-            .AppendTopics(setup->GetTestTopic());
+            .AppendTopics(setup->GetTestTopic())
+            .DirectRead(EnableDirectRead);
 
         Cerr << "Session was created" << Endl;
 
@@ -352,7 +366,8 @@ Y_UNIT_TEST_SUITE(BasicUsage) {
             .ConsumerName(TEST_CONSUMER)
             .MaxMemoryUsageBytes(1_MB)
             .DecompressionExecutor(decompressor)
-            .AppendTopics(TEST_TOPIC);
+            .AppendTopics(TEST_TOPIC)
+            .DirectRead(EnableDirectRead);
 
         TWriteSessionSettings writeSettings;
         writeSettings
@@ -394,7 +409,8 @@ Y_UNIT_TEST_SUITE(BasicUsage) {
             .ConsumerName(TEST_CONSUMER)
             .MaxMemoryUsageBytes(1_MB)
             .AppendTopics(TEST_TOPIC)
-            .DecompressionExecutor(stepByStepExecutor);
+            .DecompressionExecutor(stepByStepExecutor)
+            .DirectRead(EnableDirectRead);
 
         auto f = std::async(std::launch::async,
                             [readSettings, writeSettings, &topicClient,
@@ -508,7 +524,8 @@ Y_UNIT_TEST_SUITE(BasicUsage) {
         auto readSettings = TReadSessionSettings()
             .ConsumerName(TEST_CONSUMER)
             .MaxMemoryUsageBytes(1_MB)
-            .AppendTopics(TEST_TOPIC);
+            .AppendTopics(TEST_TOPIC)
+            .DirectRead(EnableDirectRead);
 
         readSettings.EventHandlers_
             .HandlersExecutor(stepByStepExecutor);
@@ -639,7 +656,8 @@ Y_UNIT_TEST_SUITE(BasicUsage) {
             .MaxMemoryUsageBytes(1_MB)
             .Decompress(false)
             .RetryPolicy(NYdb::NTopic::IRetryPolicy::GetNoRetryPolicy())
-            .AppendTopics(setup->GetTestTopic());
+            .AppendTopics(setup->GetTestTopic())
+            .DirectRead(EnableDirectRead);
 
         readSettings.EventHandlers_.SimpleDataHandlers(
             []
@@ -770,7 +788,8 @@ Y_UNIT_TEST_SUITE(BasicUsage) {
 
         auto readSettings = TReadSessionSettings()
             .ConsumerName(TEST_CONSUMER)
-            .AppendTopics(TEST_TOPIC);
+            .AppendTopics(TEST_TOPIC)
+            .DirectRead(EnableDirectRead);
         std::shared_ptr<IReadSession> readSession = client.CreateReadSession(readSettings);
         ui32 readMessageCount = 0;
         while (readMessageCount < 4) {
@@ -944,7 +963,8 @@ Y_UNIT_TEST_SUITE(TSettingsValidation) {
         auto readSettings = TReadSessionSettings()
             .ConsumerName(TEST_CONSUMER)
             .MaxMemoryUsageBytes(0)
-            .AppendTopics(TEST_TOPIC);
+            .AppendTopics(TEST_TOPIC)
+            .DirectRead(EnableDirectRead);
 
         auto readSession = client.CreateReadSession(readSettings);
         auto event = readSession->GetEvent(true);
