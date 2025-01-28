@@ -19,7 +19,7 @@ namespace NYdb::inline V3 {
 }
 
 namespace NYdb::inline V3::NTopic {
-    
+
 enum class EMeteringMode : uint32_t {
     Unspecified = 0,
     ReservedCapacity = 1,
@@ -126,6 +126,7 @@ private:
 class TPartitionLocation {
 public:
     TPartitionLocation(const Ydb::Topic::PartitionLocation& partitionLocation);
+    TPartitionLocation(i32 nodeId, i64 generation);
     int32_t GetNodeId() const;
     int64_t GetGeneration() const;
 

@@ -1,8 +1,8 @@
 #pragma once
 
 #include <src/client/topic/common/callback_context.h>
-#include <src/client/topic/impl/write_session_impl.h>
-#include <src/client/topic/impl/topic_impl.h>
+#include "write_session_impl.h"
+#include "topic_impl.h"
 
 #include <util/generic/buffer.h>
 
