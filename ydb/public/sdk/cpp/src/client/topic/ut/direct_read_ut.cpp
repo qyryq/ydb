@@ -254,7 +254,7 @@ struct TMockReadSessionProcessor : public TMockProcessorFactory<Ydb::Topic::Stre
     void Cancel() override {
     }
 
-    void ReadInitialMetadata(std::unordered_multimap<TString, TString>* metadata, TReadCallback callback) override {
+    void ReadInitialMetadata(std::unordered_multimap<std::string, std::string>* metadata, TReadCallback callback) override {
         Y_UNUSED(metadata);
         Y_UNUSED(callback);
         UNIT_ASSERT_C(false, "This method is not expected to be called");
@@ -486,7 +486,7 @@ struct TMockDirectReadSessionProcessor : public TMockProcessorFactory<TDirectRea
     void Cancel() override {
     }
 
-    void ReadInitialMetadata(std::unordered_multimap<TString, TString>* metadata, TReadCallback callback) override {
+    void ReadInitialMetadata(std::unordered_multimap<std::string, std::string>* metadata, TReadCallback callback) override {
         Y_UNUSED(metadata);
         Y_UNUSED(callback);
         UNIT_ASSERT_C(false, "This method is not expected to be called");
@@ -783,7 +783,7 @@ std::shared_ptr<TReadSessionEventsQueue<false>> TDirectReadSessionImplTestSetup:
 }
 
 void TDirectReadSessionImplTestSetup::AssertNoEvents() {
-    TMaybe<TReadSessionEvent::TEvent> event = GetEventsQueue()->GetEvent(false);
+    std::optional<TReadSessionEvent::TEvent> event = GetEventsQueue()->GetEvent(false);
     UNIT_ASSERT(!event);
 }
 
@@ -886,7 +886,7 @@ Y_UNIT_TEST_SUITE_F(DirectReadWithClient, TDirectReadTestsFixture) {
             {
                 // Start partition session:
                 auto event = reader->GetEvent(true);
-                UNIT_ASSERT(event.Defined());
+                UNIT_ASSERT(event);
                 UNIT_ASSERT_EVENT_TYPE(*event, TReadSessionEvent::TStartPartitionSessionEvent);
                 std::get<TReadSessionEvent::TStartPartitionSessionEvent>(*event).Confirm();
             }
@@ -894,7 +894,7 @@ Y_UNIT_TEST_SUITE_F(DirectReadWithClient, TDirectReadTestsFixture) {
             {
                 // Receive the message and commit.
                 auto event = reader->GetEvent(true);
-                UNIT_ASSERT(event.Defined());
+                UNIT_ASSERT(event);
                 UNIT_ASSERT_EVENT_TYPE(*event, TReadSessionEvent::TDataReceivedEvent);
                 auto& dataReceived = std::get<TReadSessionEvent::TDataReceivedEvent>(*event);
                 auto& messages = dataReceived.GetMessages();
@@ -905,7 +905,7 @@ Y_UNIT_TEST_SUITE_F(DirectReadWithClient, TDirectReadTestsFixture) {
             {
                 // Get commit ack.
                 auto event = reader->GetEvent(true);
-                UNIT_ASSERT(event.Defined());
+                UNIT_ASSERT(event);
                 UNIT_ASSERT_EVENT_TYPE(*event, TReadSessionEvent::TCommitOffsetAcknowledgementEvent);
             }
         }
@@ -955,7 +955,7 @@ Y_UNIT_TEST_SUITE_F(DirectReadWithClient, TDirectReadTestsFixture) {
             {
                 // Start partition session:
                 auto event = reader->GetEvent(true);
-                UNIT_ASSERT(event.Defined());
+                UNIT_ASSERT(event);
                 UNIT_ASSERT_EVENT_TYPE(*event, TReadSessionEvent::TStartPartitionSessionEvent);
                 std::get<TReadSessionEvent::TStartPartitionSessionEvent>(*event).Confirm();
             }
@@ -1124,7 +1124,7 @@ Y_UNIT_TEST_SUITE_F(DirectReadWithControlSession, TDirectReadTestsFixture) {
         setup.AddControlResponse(TMockReadSessionProcessor::TServerReadInfo().StartPartitionSessionRequest(startPartitionSessionRequest));
 
         {
-            TMaybe<TReadSessionEvent::TEvent> event = setup.EventsQueue->GetEvent(true);
+            std::optional<TReadSessionEvent::TEvent> event = setup.EventsQueue->GetEvent(true);
             UNIT_ASSERT(event);
             UNIT_ASSERT_EVENT_TYPE(*event, TReadSessionEvent::TStartPartitionSessionEvent);
             std::get<TReadSessionEvent::TStartPartitionSessionEvent>(*event).Confirm();
@@ -1155,7 +1155,7 @@ Y_UNIT_TEST_SUITE_F(DirectReadWithControlSession, TDirectReadTestsFixture) {
             ++offset;
             setup.AddDirectReadResponse(resp);
 
-            TMaybe<TReadSessionEvent::TEvent> event = setup.EventsQueue->GetEvent(true);
+            std::optional<TReadSessionEvent::TEvent> event = setup.EventsQueue->GetEvent(true);
             UNIT_ASSERT(event);
             UNIT_ASSERT_EVENT_TYPE(*event, TReadSessionEvent::TDataReceivedEvent);
             auto& e = std::get<TReadSessionEvent::TDataReceivedEvent>(*event);
@@ -1163,7 +1163,7 @@ Y_UNIT_TEST_SUITE_F(DirectReadWithControlSession, TDirectReadTestsFixture) {
         }
 
         while (i < offset) {
-            TMaybe<TReadSessionEvent::TEvent> event = setup.EventsQueue->GetEvent(true);
+            std::optional<TReadSessionEvent::TEvent> event = setup.EventsQueue->GetEvent(true);
             UNIT_ASSERT(event);
             UNIT_ASSERT_EVENT_TYPE(*event, TReadSessionEvent::TDataReceivedEvent);
             auto& e = std::get<TReadSessionEvent::TDataReceivedEvent>(*event);
@@ -1173,7 +1173,7 @@ Y_UNIT_TEST_SUITE_F(DirectReadWithControlSession, TDirectReadTestsFixture) {
         {
             // Verify that the session receives TStopPartitionSessionEvent after data was received:
 
-            TMaybe<TReadSessionEvent::TEvent> event = setup.EventsQueue->GetEvent(true);
+            std::optional<TReadSessionEvent::TEvent> event = setup.EventsQueue->GetEvent(true);
             UNIT_ASSERT(event);
             UNIT_ASSERT_EVENT_TYPE(*event, TReadSessionEvent::TStopPartitionSessionEvent);
             // auto e = std::get_if<TReadSessionEvent::TStopPartitionSessionEvent>(&*event);
@@ -1267,7 +1267,7 @@ Y_UNIT_TEST_SUITE_F(DirectReadWithControlSession, TDirectReadTestsFixture) {
         }
 
         {
-            TMaybe<TReadSessionEvent::TEvent> event = setup.EventsQueue->GetEvent(true);
+            std::optional<TReadSessionEvent::TEvent> event = setup.EventsQueue->GetEvent(true);
             UNIT_ASSERT(event);
             UNIT_ASSERT_EVENT_TYPE(*event, TReadSessionEvent::TStartPartitionSessionEvent);
             std::get<TReadSessionEvent::TStartPartitionSessionEvent>(*event).Confirm();
@@ -1299,7 +1299,7 @@ Y_UNIT_TEST_SUITE_F(DirectReadWithControlSession, TDirectReadTestsFixture) {
             ++offset;
             setup.AddDirectReadResponse(resp);
 
-            TMaybe<TReadSessionEvent::TEvent> event = setup.EventsQueue->GetEvent(true);
+            std::optional<TReadSessionEvent::TEvent> event = setup.EventsQueue->GetEvent(true);
             UNIT_ASSERT(event);
             UNIT_ASSERT_EVENT_TYPE(*event, TReadSessionEvent::TDataReceivedEvent);
             auto& e = std::get<TReadSessionEvent::TDataReceivedEvent>(*event);
@@ -1308,7 +1308,7 @@ Y_UNIT_TEST_SUITE_F(DirectReadWithControlSession, TDirectReadTestsFixture) {
         }
 
         while (i < offset) {
-            TMaybe<TReadSessionEvent::TEvent> event = setup.EventsQueue->GetEvent(true);
+            std::optional<TReadSessionEvent::TEvent> event = setup.EventsQueue->GetEvent(true);
             UNIT_ASSERT(event);
             UNIT_ASSERT_EVENT_TYPE(*event, TReadSessionEvent::TDataReceivedEvent);
             auto& e = std::get<TReadSessionEvent::TDataReceivedEvent>(*event);
@@ -1330,7 +1330,7 @@ Y_UNIT_TEST_SUITE_F(DirectReadWithControlSession, TDirectReadTestsFixture) {
         {
             // Verify that the session receives TStopPartitionSessionEvent after data was received:
 
-            TMaybe<TReadSessionEvent::TEvent> event = setup.EventsQueue->GetEvent(true);
+            std::optional<TReadSessionEvent::TEvent> event = setup.EventsQueue->GetEvent(true);
             UNIT_ASSERT(event);
             UNIT_ASSERT_EVENT_TYPE(*event, TReadSessionEvent::TPartitionSessionClosedEvent);
             // auto e = std::get_if<TReadSessionEvent::TStopPartitionSessionEvent>(&*event);
