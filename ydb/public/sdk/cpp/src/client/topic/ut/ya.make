@@ -2,6 +2,8 @@ UNITTEST_FOR(ydb/public/sdk/cpp/src/client/topic)
 
 INCLUDE(${ARCADIA_ROOT}/ydb/public/sdk/cpp/sdk_common.inc)
 
+TIMEOUT(600)
+
 IF (SANITIZER_TYPE == "thread" OR WITH_VALGRIND)
     SIZE(LARGE)
     TAG(ya:fat)
