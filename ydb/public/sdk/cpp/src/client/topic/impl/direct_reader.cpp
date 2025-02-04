@@ -23,7 +23,7 @@ TDirectReadClientMessage TDirectReadPartitionSession::MakeStartRequest() const {
     |       On start      |          |
     |  +----------------+ |          |
     v  |                v |          |
-    IDLE<---DELAYED--->STARTING--->WORKING
+  ->IDLE<---DELAYED--->STARTING--->WORKING
                ^          |          |
          Retry |          |          |
                +----------<----------+
@@ -238,12 +238,26 @@ void TDirectReadSessionManager::UpdatePartitionSession(TPartitionSessionId parti
     auto sessionIt = NodeSessions.find(oldNodeId);
     Y_ABORT_UNLESS(sessionIt != NodeSessions.end());
 
+    TDirectReadId next = 1;
+    TMaybe<TDirectReadId> last;
+
+    if (auto session = sessionIt->second->LockShared()) {
+        auto ids = session->GetDirectReadIds(partitionSessionId);
+        next = ids.NextDirectReadId;
+        last = ids.LastDirectReadId;
+    }
+
     // If oldLoc == newLoc and sessionIt->Empty() after deleting the partition session,
     // we have to reconnect back to the same node as before. Maybe it's worth to add a special case here.
     DeletePartitionSession(partitionSessionId, sessionIt);
 
     // TODO(qyryq) std::move an old RetryState?
-    StartPartitionSession({ .PartitionSessionId = partitionSessionId, .Location = newLocation });
+    StartPartitionSession({
+        .PartitionSessionId = partitionSessionId,
+        .Location = newLocation,
+        .NextDirectReadId = next,
+        .LastDirectReadId = last,
+    });
 }
 
 void TDirectReadSessionManager::ErasePartitionSession(TPartitionSessionId partitionSessionId) {
@@ -376,6 +390,16 @@ void TDirectReadSession::SetLastDirectReadId(TPartitionSessionId partitionSessio
             DeletePartitionSessionImpl(partitionSessionId);
         }
     }
+}
+
+TDirectReadSession::TDirectReadIds TDirectReadSession::GetDirectReadIds(TPartitionSessionId id) const {
+    std::lock_guard guard(Lock);
+    auto it = PartitionSessions.find(id);
+    Y_ABORT_UNLESS(it != PartitionSessions.end());
+    return {
+        .NextDirectReadId = it->second.NextDirectReadId,
+        .LastDirectReadId = it->second.LastDirectReadId,
+    };
 }
 
 void TDirectReadSession::DeletePartitionSession(TPartitionSessionId partitionSessionId) {
@@ -618,14 +642,14 @@ void TDirectReadSession::OnReadDoneImpl(Ydb::Topic::StreamDirectReadMessage::Sto
 void TDirectReadSession::OnReadDoneImpl(Ydb::Topic::StreamDirectReadMessage::DirectReadResponse&& response, TDeferredActions<false>& deferred) {
     Y_ABORT_UNLESS(Lock.IsLocked());
 
-    LOG_LAZY(Log, TLOG_DEBUG, GetLogPrefix() << "Got DirectReadResponse " << response.ShortDebugString());
-
     auto partitionSessionId = response.partition_session_id();
     Y_ABORT_UNLESS(partitionSessionId == response.partition_data().partition_session_id());
 
     auto it = PartitionSessions.find(partitionSessionId);
     Y_ABORT_UNLESS(it != PartitionSessions.end());
     auto& partitionSession = it->second;
+
+    LOG_LAZY(Log, TLOG_DEBUG, GetLogPrefix() << "Waiting for NextDirectReadId=" << partitionSession.NextDirectReadId << ". Got DirectReadResponse " << response.ShortDebugString());
 
     auto directReadId = response.direct_read_id();
 

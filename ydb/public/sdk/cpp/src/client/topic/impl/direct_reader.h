@@ -114,6 +114,12 @@ public:
     bool Empty() const;
     bool Closed() const;
 
+    struct TDirectReadIds {
+        TDirectReadId NextDirectReadId;
+        TMaybe<TDirectReadId> LastDirectReadId;
+    };
+    TDirectReadIds GetDirectReadIds(TPartitionSessionId) const;
+
     void AddPartitionSession(TDirectReadPartitionSession&&);
     void UpdatePartitionSessionGeneration(TPartitionSessionId, TPartitionLocation);
     void SetLastDirectReadId(TPartitionSessionId, TDirectReadId);
@@ -175,7 +181,7 @@ private:
     };
 
 private:
-    TAdaptiveLock Lock;
+    mutable TAdaptiveLock Lock;
 
     NYdbGrpc::IQueueClientContextPtr ClientContext;
     NYdbGrpc::IQueueClientContextPtr ConnectContext;

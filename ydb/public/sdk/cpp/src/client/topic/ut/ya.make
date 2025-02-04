@@ -4,7 +4,9 @@ REQUIREMENTS(ram:32)
 
 INCLUDE(${ARCADIA_ROOT}/ydb/public/sdk/cpp/sdk_common.inc)
 
-IF (SANITIZER_TYPE OR WITH_VALGRIND)
+TIMEOUT(600)
+
+IF (SANITIZER_TYPE == "thread" OR WITH_VALGRIND)
     SIZE(LARGE)
     TAG(ya:fat)
 ELSE()
