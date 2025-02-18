@@ -1171,14 +1171,23 @@ Y_UNIT_TEST_SUITE_F(DirectReadWithControlSession, TDirectReadTestsFixture) {
         }
 
         {
-            // Verify that the session receives TStopPartitionSessionEvent after data was received:
+            // Verify that the session receives TStopPartitionSessionEvent(graceful=true) after data was received:
 
             std::optional<TReadSessionEvent::TEvent> event = setup.EventsQueue->GetEvent(true);
             UNIT_ASSERT(event);
             UNIT_ASSERT_EVENT_TYPE(*event, TReadSessionEvent::TStopPartitionSessionEvent);
-            // auto e = std::get_if<TReadSessionEvent::TStopPartitionSessionEvent>(&*event);
+            auto e = std::get_if<TReadSessionEvent::TStopPartitionSessionEvent>(&*event);
+            e->Confirm();
         }
 
+        {
+            // Verify that the session receives TPartitionSessionClosedEvent after data was received:
+
+            std::optional<TReadSessionEvent::TEvent> event = setup.EventsQueue->GetEvent(true);
+            UNIT_ASSERT(event);
+            UNIT_ASSERT_EVENT_TYPE(*event, TReadSessionEvent::TPartitionSessionClosedEvent);
+            // auto e = std::get_if<TReadSessionEvent::TPartitionSessionClosedEvent>(&*event);
+        }
         setup.MockDirectReadProcessorFactory->Wait();
 
         setup.AssertNoEvents();
@@ -1919,6 +1928,9 @@ Y_UNIT_TEST_SUITE(DirectReadWithServer) {
                 e.Confirm();
                 partitionSession = e.GetPartitionSession();
             })
+            .StopPartitionSessionHandler([&](TReadSessionEvent::TStopPartitionSessionEvent& e) {
+                e.Confirm();
+            })
             ;
 
         auto reader = client.CreateReadSession(readerSettings);
@@ -1936,6 +1948,119 @@ Y_UNIT_TEST_SUITE(DirectReadWithServer) {
         writeMessages(1);
 
         gotSecondMessage.GetFuture().Wait();
+
+        reader->Close();
+    }
+
+    Y_UNIT_TEST(KillPQRBTablet) {
+        /*
+        A read session should keep working if a balancer tablet is killed and moved to another node.
+        */
+        // TODO
+        return;
+        auto setup = TTopicSdkTestSetup(TEST_CASE_NAME);
+        auto client = setup.MakeClient();
+        auto nextMessageId = 0;
+
+        auto writeMessages = [&](size_t n) {
+            auto writer = client.CreateSimpleBlockingWriteSession(TWriteSessionSettings()
+                .Path(TEST_TOPIC)
+                .MessageGroupId(TEST_MESSAGE_GROUP_ID)
+                .ProducerId(TEST_MESSAGE_GROUP_ID));
+
+            for (size_t i = 0; i < n; ++i, ++nextMessageId) {
+                auto res = writer->Write(TStringBuilder() << "message-" << nextMessageId);
+                UNIT_ASSERT(res);
+            }
+
+            writer->Close();
+        };
+
+        writeMessages(1);
+
+        auto gotFirstMessage = NThreading::NewPromise();
+        auto gotSecondMessage = NThreading::NewPromise();
+
+        auto readerSettings = TReadSessionSettings()
+            .ConsumerName(TEST_CONSUMER)
+            .AppendTopics(TEST_TOPIC)
+            .DirectRead(true);
+
+        TIntrusivePtr<TPartitionSession> partitionSession;
+
+        readerSettings.EventHandlers_
+            .DataReceivedHandler([&](TReadSessionEvent::TDataReceivedEvent& e) {
+                switch (e.GetMessages()[0].GetSeqNo()) {
+                case 1:
+                    gotFirstMessage.SetValue();
+                    break;
+                case 2:
+                    gotSecondMessage.SetValue();
+                    break;
+                }
+                e.Commit();
+            })
+            .StartPartitionSessionHandler([&](TReadSessionEvent::TStartPartitionSessionEvent& e) {
+                e.Confirm();
+                partitionSession = e.GetPartitionSession();
+            })
+            ;
+
+        auto reader = client.CreateReadSession(readerSettings);
+
+        gotFirstMessage.GetFuture().Wait();
+
+        auto firstGenerationId = partitionSession->GetLocation()->GetGeneration();
+
+        setup.GetServer().KillTopicPqrbTablet(setup.GetTopicPath());
+
+        while (firstGenerationId == partitionSession->GetLocation()->GetGeneration()) {
+            Sleep(TDuration::MilliSeconds(100));
+        }
+
+        writeMessages(1);
+
+        gotSecondMessage.GetFuture().Wait();
+
+        reader->Close();
+    }
+
+    Y_UNIT_TEST(Devslice) {
+        return;
+        auto driverConfig = NYdb::TDriverConfig()
+            .SetEndpoint(GetEnv("ENDPOINT"))
+            .SetDatabase("/Root/testdb")
+            .SetLog(std::unique_ptr<TLogBackend>(CreateLogBackend("cerr", ELogPriority::TLOG_DEBUG).Release()))
+            .SetAuthToken(GetEnv("YDB_TOKEN"));
+
+        auto driver = NYdb::TDriver(driverConfig);
+
+        auto clientSettings = TTopicClientSettings();
+        auto client = TTopicClient(driver, clientSettings);
+
+        auto settings = TReadSessionSettings()
+            .AppendTopics(TTopicReadSettings("t1").AppendPartitionIds({0}))
+            .ConsumerName("c1")
+            .DirectRead(true);
+
+        settings.EventHandlers_
+            .StartPartitionSessionHandler([](TReadSessionEvent::TStartPartitionSessionEvent& e) {
+                e.Confirm();
+            })
+            .StopPartitionSessionHandler([](TReadSessionEvent::TStopPartitionSessionEvent& e) {
+                e.Confirm();
+            })
+            .DataReceivedHandler([](TReadSessionEvent::TDataReceivedEvent& e) {
+                for (ui32 i = 0; i < e.GetMessages().size(); ++i) {
+                    auto& m = e.GetMessages()[i];
+                    Cerr << (TStringBuilder() << "Message: " << m.GetData() << Endl);
+                    m.Commit();
+                }
+            });
+
+        auto reader = client.CreateReadSession(settings);
+
+        Sleep(TDuration::Seconds(1000));
 
         reader->Close();
     }

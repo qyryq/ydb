@@ -856,7 +856,7 @@ void TWriteSessionImpl::InitImpl() {
         (*init->mutable_write_session_meta())[attr.first] = attr.second;
     }
     LOG_LAZY(DbDriverState->Log, TLOG_DEBUG, LogPrefix() << "Write session: send init request: "<< req.ShortDebugString());
-    
+
     TRACE_LAZY(DbDriverState->Log, "InitRequest",
         TRACE_KV_IF(init->partitioning_case() == Ydb::Topic::StreamWriteMessage_InitRequest::kPartitionId, "partition_id", init->partition_id()),
         TRACE_IF(init->partitioning_case() == Ydb::Topic::StreamWriteMessage_InitRequest::kPartitionWithGeneration,
@@ -1686,7 +1686,7 @@ void TWriteSessionImpl::AbortImpl() {
             Processor->Cancel();
         Cancel(ClientContext);
         ClientContext.reset(); // removes context from contexts set from underlying gRPC-client.
-	
+
         CancelTransactions();
     }
 }

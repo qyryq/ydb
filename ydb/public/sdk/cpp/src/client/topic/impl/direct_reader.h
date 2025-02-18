@@ -8,6 +8,10 @@
 
 #include <ydb/public/api/grpc/ydb_topic_v1.grpc.pb.h>
 
+#include <util/thread/lfqueue.h>
+
+#include <deque>
+
 
 namespace NYdb::NTopic {
 
@@ -39,7 +43,8 @@ struct IDirectReadSessionControlCallbacks {
     using TPtr = std::shared_ptr<IDirectReadSessionControlCallbacks>;
 
     virtual ~IDirectReadSessionControlCallbacks() {}
-    virtual void OnDirectReadDone(Ydb::Topic::StreamDirectReadMessage::DirectReadResponse&&, TDeferredActions<false>&) {}
+    // virtual void OnDirectReadDone(Ydb::Topic::StreamDirectReadMessage::DirectReadResponse&&, TDeferredActions<false>&) {}
+    virtual void OnDirectReadDone(std::shared_ptr<TLockFreeQueue<Ydb::Topic::StreamDirectReadMessage::DirectReadResponse>>) {}
     virtual void AbortSession(TSessionClosedEvent&&) {}
     virtual void ScheduleCallback(TDuration, std::function<void()>) {}
     virtual void ScheduleCallback(TDuration, std::function<void()>, TDeferredActions<false>&) {}
@@ -51,7 +56,8 @@ class TDirectReadSessionControlCallbacks : public IDirectReadSessionControlCallb
 public:
 
     TDirectReadSessionControlCallbacks(TSingleClusterReadSessionContextPtr contextPtr);
-    void OnDirectReadDone(Ydb::Topic::StreamDirectReadMessage::DirectReadResponse&& response, TDeferredActions<false>&) override;
+    // void OnDirectReadDone(Ydb::Topic::StreamDirectReadMessage::DirectReadResponse&& response, TDeferredActions<false>&) override;
+    void OnDirectReadDone(std::shared_ptr<TLockFreeQueue<Ydb::Topic::StreamDirectReadMessage::DirectReadResponse>>) override;
     void AbortSession(TSessionClosedEvent&& closeEvent) override;
     void ScheduleCallback(TDuration delay, std::function<void()> callback) override;
     void ScheduleCallback(TDuration delay, std::function<void()> callback, TDeferredActions<false>&) override;
@@ -79,6 +85,7 @@ public:
     EState State = EState::IDLE;
     IRetryPolicy::IRetryState::TPtr RetryState = {};
 
+    // The ID of the direct-read batch we want to read next.
     TDirectReadId NextDirectReadId = 1;
 
     // If the control session sends StopPartitionSessionRequest(graceful=true, last_direct_read_id),
@@ -124,6 +131,7 @@ public:
     void UpdatePartitionSessionGeneration(TPartitionSessionId, TPartitionLocation);
     void SetLastDirectReadId(TPartitionSessionId, TDirectReadId);
     void DeletePartitionSession(TPartitionSessionId);
+    void DeletePartitionSessionIfNeeded(TPartitionSessionId);
 
 private:
 
@@ -137,7 +145,7 @@ private:
 
     void WriteToProcessorImpl(TDirectReadClientMessage&& req);
     void ReadFromProcessorImpl(TDeferredActions<false>&);
-    void OnReadDone(NYdbGrpc::TGrpcStatus&&, size_t connectionGeneration);
+    void OnReadDone(NYdbGrpc::TGrpcStatus&&, size_t connectionGeneration, TDeferredActions<false>&);
 
     void OnReadDoneImpl(Ydb::Topic::StreamDirectReadMessage::InitResponse&&, TDeferredActions<false>&);
     void OnReadDoneImpl(Ydb::Topic::StreamDirectReadMessage::StartDirectReadPartitionSessionResponse&&, TDeferredActions<false>&);
@@ -194,6 +202,8 @@ private:
     const IDirectReadProcessorFactoryPtr ProcessorFactory;
     const TNodeId NodeId;
 
+    std::shared_ptr<TLockFreeQueue<Ydb::Topic::StreamDirectReadMessage::DirectReadResponse>> IncomingMessagesForControlSession;
+
     IDirectReadSessionControlCallbacks::TPtr ControlCallbacks;
     IDirectReadProcessor::TPtr Processor;
     std::shared_ptr<TDirectReadServerMessage> ServerMessage;
@@ -227,7 +237,10 @@ public:
     void UpdatePartitionSession(TPartitionSessionId, TPartitionLocation);
     void ErasePartitionSession(TPartitionSessionId);
     void StopPartitionSession(TPartitionSessionId);
-    void StopPartitionSessionGracefully(TPartitionSessionId, TDirectReadId lastDirectReadId);
+
+    // Update LastDirectReadId in the partition session object.
+    // It will be used later to decide if we need to stop the partition session.
+    bool StopPartitionSessionGracefully(TPartitionSessionId, TDirectReadId lastDirectReadId);
 
     void Close();
 

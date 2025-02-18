@@ -61,6 +61,7 @@ void TTopicWorkloadReader::ReaderLoop(TTopicWorkloadReaderParams& params, TInsta
         ui64 StartOffset;
         NYdb::NTopic::TPartitionSession::TPtr Stream;
     };
+    // The key is a pair of {topic path, partition ID}.
     THashMap<std::pair<TString, ui64>, TPartitionStreamState> streamState;
 
     TInstant LastPartitionStatusRequestTime = TInstant::Zero();
@@ -90,7 +91,8 @@ void TTopicWorkloadReader::ReaderLoop(TTopicWorkloadReaderParams& params, TInsta
 
         for (auto& event : events) {
             if (auto* dataEvent = std::get_if<NYdb::NTopic::TReadSessionEvent::TDataReceivedEvent>(&event)) {
-                WRITE_LOG(params.Log, ELogPriority::TLOG_DEBUG, TStringBuilder() << dataEvent->DebugString());
+                // WRITE_LOG(params.Log, ELogPriority::TLOG_DEBUG, TStringBuilder() << dataEvent->DebugString());
+                WRITE_LOG(params.Log, ELogPriority::TLOG_DEBUG, TStringBuilder() << "DataReceivedEvent");
 
                 for (const auto& message : dataEvent->GetMessages()) {
                     ui64 fullTime = (now - message.GetCreateTime()).MilliSeconds();
@@ -100,10 +102,10 @@ void TTopicWorkloadReader::ReaderLoop(TTopicWorkloadReaderParams& params, TInsta
                         txSupport->AppendRow(TString{message.GetData()});
                     }
 
-                    WRITE_LOG(params.Log, ELogPriority::TLOG_DEBUG, TStringBuilder() << "Got message: " << message.GetMessageGroupId()
-                        << " topic " << message.GetPartitionSession()->GetTopicPath() << " partition " << message.GetPartitionSession()->GetPartitionId()
-                        << " offset " << message.GetOffset() << " seqNo " << message.GetSeqNo()
-                        << " createTime " << message.GetCreateTime() << " fullTimeMs " << fullTime);
+                    // WRITE_LOG(params.Log, ELogPriority::TLOG_DEBUG, TStringBuilder() << "Got message: " << message.GetMessageGroupId()
+                    //     << " topic " << message.GetPartitionSession()->GetTopicPath() << " partition " << message.GetPartitionSession()->GetPartitionId()
+                    //     << " offset " << message.GetOffset() << " seqNo " << message.GetSeqNo()
+                    //     << " createTime " << message.GetCreateTime() << " fullTimeMs " << fullTime);
                 }
 
                 if (!params.ReadWithoutConsumer && (!txSupport || params.UseTopicCommit)) {
@@ -132,7 +134,7 @@ void TTopicWorkloadReader::ReaderLoop(TTopicWorkloadReaderParams& params, TInsta
             } else if (auto* endPartitionStreamEvent = std::get_if<NYdb::NTopic::TReadSessionEvent::TEndPartitionSessionEvent>(&event)) {
                 endPartitionStreamEvent->Confirm();
             } else if (auto* partitionStreamStatusEvent = std::get_if<NYdb::NTopic::TReadSessionEvent::TPartitionSessionStatusEvent>(&event)) {
-                WRITE_LOG(params.Log, ELogPriority::TLOG_DEBUG, TStringBuilder() << partitionStreamStatusEvent->DebugString())
+                // WRITE_LOG(params.Log, ELogPriority::TLOG_DEBUG, TStringBuilder() << partitionStreamStatusEvent->DebugString())
 
                 ui64 lagMessages = partitionStreamStatusEvent->GetEndOffset() - partitionStreamStatusEvent->GetCommittedOffset();
                 ui64 lagTime = lagMessages == 0 ? 0 : (now - partitionStreamStatusEvent->GetWriteTimeHighWatermark()).MilliSeconds();
