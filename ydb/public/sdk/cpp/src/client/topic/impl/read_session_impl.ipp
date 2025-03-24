@@ -1350,18 +1350,25 @@ inline void TSingleClusterReadSessionImpl<false>::OnDirectReadDone(
         if (!responses->Dequeue(&response)) {
             return;
         }
-        Ydb::Topic::StreamReadMessage::ReadResponse r;
-        // TODO(qyryq) What is the proper size here?
-        r.set_bytes_size(response.ByteSizeLong());
-        auto* data = r.add_partition_data();
-        data->Swap(response.mutable_partition_data());
 
         TClientMessage<false> req;
         auto& ack = *req.mutable_direct_read_ack();
         ack.set_direct_read_id(response.direct_read_id());
         ack.set_partition_session_id(response.partition_session_id());
-
         WriteToProcessorImpl(std::move(req));
+
+        if (!response.has_partition_data()) {
+            // Sometimes the server might send an empty DirectReadResponse with a non-zero bytes_size, that we should take into account.
+            ReadSizeBudget += response.bytes_size();
+            ReadSizeServerDelta -= response.bytes_size();
+            ContinueReadingDataImpl();
+            return;
+        }
+
+        Ydb::Topic::StreamReadMessage::ReadResponse r;
+        r.set_bytes_size(response.bytes_size());
+        auto* data = r.add_partition_data();
+        data->Swap(response.mutable_partition_data());
         OnReadDoneImpl(std::move(r), deferred);
     }
 }
