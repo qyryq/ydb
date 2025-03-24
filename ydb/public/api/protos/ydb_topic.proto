@@ -621,7 +621,6 @@ message StreamDirectReadMessage {
     }
 
     // Command from client to create and start a direct read session.
-    // Server should not send a response to the command.
     message InitRequest {
         // Read session identifier.
         string session_id = 1;

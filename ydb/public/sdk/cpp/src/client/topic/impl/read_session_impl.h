@@ -1244,7 +1244,8 @@ private:
 
     // Direct Read
     bool IsDirectRead();
-    void OnDirectReadDone(Ydb::Topic::StreamDirectReadMessage::DirectReadResponse&&, TDeferredActions<false>&);
+    // void OnDirectReadDone(Ydb::Topic::StreamDirectReadMessage::DirectReadResponse&&, TDeferredActions<false>&);
+    void OnDirectReadDone(std::shared_ptr<TLockFreeQueue<Ydb::Topic::StreamDirectReadMessage::DirectReadResponse>>); //, TDeferredActions<false>&);
     void StopPartitionSession(TPartitionSessionId);
     void StopPartitionSessionImpl(TIntrusivePtr<TPartitionStreamImpl<false>>, bool graceful, bool fromControlSession, TDeferredActions<false>&);
 

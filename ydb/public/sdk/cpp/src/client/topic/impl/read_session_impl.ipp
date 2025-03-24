@@ -662,15 +662,11 @@ void TSingleClusterReadSessionImpl<UseMigrationProtocol>::ConfirmPartitionStream
         WriteToProcessorImpl(std::move(req));
 
         if (IsDirectRead()) {
-            // First send Start response to the control session,
-            // then send Start request to the direct read session.
-            // As the messages are sent to different nodes, there is no order between them,
-            // we just give the control session a bit more time to process the Start response.
-
             Y_ABORT_UNLESS(DirectReadSessionManager.Defined());
 
             auto location = partitionStream->GetLocation();
             Y_ABORT_UNLESS(location.Defined());
+
             DirectReadSessionManager->StartPartitionSession({
                 .PartitionSessionId = static_cast<TPartitionSessionId>(partitionSessionId),
                 .Location = *location,
@@ -707,7 +703,6 @@ void TSingleClusterReadSessionImpl<UseMigrationProtocol>::ConfirmPartitionStream
     >;
 
     CookieMapping.RemoveMapping(GetPartitionStreamId(partitionStream));
-    PartitionStreams.erase(partitionStream->GetAssignId());
 
     bool pushRes = true;
     if constexpr (UseMigrationProtocol) {
@@ -715,9 +710,12 @@ void TSingleClusterReadSessionImpl<UseMigrationProtocol>::ConfirmPartitionStream
                                 TClosedEvent(partitionStream, TClosedEvent::EReason::DestroyConfirmedByUser),
                                 deferred);
     } else {
-        pushRes = EventsQueue->PushEvent(partitionStream,
-                                TClosedEvent(partitionStream, TClosedEvent::EReason::StopConfirmedByUser),
-                                deferred);
+        if (!IsDirectRead()) {
+            PartitionStreams.erase(partitionStream->GetAssignId());
+            pushRes = EventsQueue->PushEvent(partitionStream,
+                TClosedEvent(partitionStream, TClosedEvent::EReason::StopConfirmedByUser),
+                deferred);
+        }
     }
     if (!pushRes) {
         AbortImpl();
@@ -736,7 +734,7 @@ void TSingleClusterReadSessionImpl<UseMigrationProtocol>::ConfirmPartitionStream
         released.set_partition_session_id(partitionStream->GetAssignId());
 
         // TODO(qyryq) Client must pass graceful value unchanged from the StopPartitionSessionRequest.
-        // released.set_graceful(graceful);
+        released.set_graceful(true);
     }
 
     WriteToProcessorImpl(std::move(req));
@@ -790,10 +788,10 @@ void TSingleClusterReadSessionImpl<UseMigrationProtocol>::Commit(const TPartitio
 
 template<bool UseMigrationProtocol>
 void TSingleClusterReadSessionImpl<UseMigrationProtocol>::RequestPartitionStreamStatus(const TPartitionStreamImpl<UseMigrationProtocol>* partitionStream) {
-    LOG_LAZY(Log,
-        TLOG_DEBUG,
-        GetLogPrefix() << "Requesting status for partition stream id: " << GetPartitionStreamId(partitionStream)
-    );
+    // LOG_LAZY(Log,
+    //     TLOG_DEBUG,
+    //     GetLogPrefix() << "Requesting status for partition stream id: " << GetPartitionStreamId(partitionStream)
+    // );
     std::lock_guard guard(Lock);
     if (Aborting || Closing || !IsActualPartitionStreamImpl(partitionStream)) { // Got previous incarnation.
         return;
@@ -845,7 +843,9 @@ void TSingleClusterReadSessionImpl<UseMigrationProtocol>::WriteToProcessorImpl(
     TClientMessage<UseMigrationProtocol>&& req) {
     Y_ABORT_UNLESS(Lock.IsLocked());
 
+
     if (Processor) {
+        Cerr << (TStringBuilder() << "XXXXX control session send request = " << req.ShortDebugString() << '\n');
         Processor->Write(std::move(req));
     }
 }
@@ -909,6 +909,15 @@ void TSingleClusterReadSessionImpl<UseMigrationProtocol>::OnReadDone(NYdbGrpc::T
         if (connectionGeneration != ConnectionGeneration) {
             return; // Message from previous connection. Ignore.
         }
+
+        if constexpr (!UseMigrationProtocol) {
+            if (!IsErrorMessage(*ServerMessage) && ServerMessage->server_message_case() != TServerMessage<false>::kReadResponse) {
+                Cerr << (TStringBuilder() << "XXXXX control session ServerMessage = " << ServerMessage->ShortDebugString() << '\n');
+            } else {
+                Cerr << (TStringBuilder() << "XXXXX control session ServerMessage = ReadResponse\n");
+            }
+        }
+
         if (errorStatus.Ok()) {
             if (IsErrorMessage(*ServerMessage)) {
                 errorStatus = MakeErrorFromProto(*ServerMessage);
@@ -1331,22 +1340,27 @@ inline void TSingleClusterReadSessionImpl<false>::OnReadDoneImpl(
 
 template <>
 inline void TSingleClusterReadSessionImpl<false>::OnDirectReadDone(
-    Ydb::Topic::StreamDirectReadMessage::DirectReadResponse&& response,
-    TDeferredActions<false>& deferred
+    std::shared_ptr<TLockFreeQueue<Ydb::Topic::StreamDirectReadMessage::DirectReadResponse>> responses
+    // Ydb::Topic::StreamDirectReadMessage::DirectReadResponse&& response,
+    // TDeferredActions<false>& deferred
 ) {
-    Ydb::Topic::StreamReadMessage::ReadResponse r;
-    // TODO(qyryq) What is the proper size here?
-    r.set_bytes_size(response.ByteSizeLong());
-    auto* data = r.add_partition_data();
-    data->Swap(response.mutable_partition_data());
-
-    TClientMessage<false> req;
-    auto& ack = *req.mutable_direct_read_ack();
-    ack.set_direct_read_id(response.direct_read_id());
-    ack.set_partition_session_id(response.partition_session_id());
-
-    // Send DirectReadAck then process the data:
+    TDeferredActions<false> deferred;
     with_lock (Lock) {
+        Ydb::Topic::StreamDirectReadMessage::DirectReadResponse response;
+        if (!responses->Dequeue(&response)) {
+            return;
+        }
+        Ydb::Topic::StreamReadMessage::ReadResponse r;
+        // TODO(qyryq) What is the proper size here?
+        r.set_bytes_size(response.ByteSizeLong());
+        auto* data = r.add_partition_data();
+        data->Swap(response.mutable_partition_data());
+
+        TClientMessage<false> req;
+        auto& ack = *req.mutable_direct_read_ack();
+        ack.set_direct_read_id(response.direct_read_id());
+        ack.set_partition_session_id(response.partition_session_id());
+
         WriteToProcessorImpl(std::move(req));
         OnReadDoneImpl(std::move(r), deferred);
     }
@@ -1364,17 +1378,20 @@ inline void TSingleClusterReadSessionImpl<false>::StopPartitionSessionImpl(
 ) {
     auto partitionSessionId = partitionStream->GetAssignId();
 
-    if (IsDirectRead() && graceful) {
+    if (IsDirectRead()) {
         Y_ABORT_UNLESS(DirectReadSessionManager.Defined());
-
-        if (fromControlSession) {
+        if (graceful) {
+            if (fromControlSession) {
+                // DirectReadSessionManager->StopPartitionSession(partitionSessionId);
+                // return; // TODO(qyryq) Почему тут ретурн?
+            } else {
+                // Call from a direct session, that closed itself, so we don't need to stop it,
+                // but only need to erase it from the manager.
+                DirectReadSessionManager->ErasePartitionSession(partitionSessionId);
+            }
+        } else {
             DirectReadSessionManager->StopPartitionSession(partitionSessionId);
-            return;
         }
-
-        // Call from a direct session, that closed itself, so we don't need to stop it,
-        // but only need to erase it from the manager.
-        DirectReadSessionManager->ErasePartitionSession(partitionSessionId);
     }
 
     bool pushRes = true;
@@ -1387,6 +1404,11 @@ inline void TSingleClusterReadSessionImpl<false>::StopPartitionSessionImpl(
             TReadSessionEvent::TStopPartitionSessionEvent(std::move(partitionStream), committedOffset),
             deferred);
     } else {
+        // partitionStream->ConfirmDestroy();
+        TClientMessage<false> req;
+        auto& released = *req.mutable_stop_partition_session_response();
+        released.set_partition_session_id(partitionStream->GetAssignId());
+        WriteToProcessorImpl(std::move(req));
         PartitionStreams.erase(partitionSessionId);
         pushRes = EventsQueue->PushEvent(
             partitionStream,
@@ -1501,16 +1523,20 @@ inline void TSingleClusterReadSessionImpl<false>::OnReadDoneImpl(
     Y_ABORT_UNLESS(Lock.IsLocked());
     LOG_LAZY(Log, TLOG_DEBUG, GetLogPrefix() << "UpdatePartitionSession " << msg.DebugString());
 
-    auto it = PartitionStreams.find(msg.partition_session_id());
+    auto partitionSessionId = msg.partition_session_id();
+    auto it = PartitionStreams.find(partitionSessionId);
     if (it == PartitionStreams.end()) {
+        LOG_LAZY(Log, TLOG_DEBUG, GetLogPrefix() << "Wanted to update partition session id=" << msg.partition_session_id()
+                                                 << ", but no such id was found");
         return;
     }
+    Y_ABORT_UNLESS(it->second->GetAssignId() == static_cast<unsigned long>(msg.partition_session_id()));
 
     // TODO(qyryq) Do we need to store generation/nodeid info in TSingleClusterReadSessionImpl?
     if (IsDirectRead()) {
         Y_ABORT_UNLESS(DirectReadSessionManager.Defined());
         it->second->SetLocation(msg.partition_location());
-        DirectReadSessionManager->UpdatePartitionSession(it->second->GetPartitionSessionId(), msg.partition_location());
+        DirectReadSessionManager->UpdatePartitionSession(partitionSessionId, msg.partition_location());
     }
 }
 
@@ -1533,11 +1559,32 @@ inline void TSingleClusterReadSessionImpl<false>::OnReadDoneImpl(
         return;
     }
 
-    if (msg.graceful() && IsDirectRead()) {
-        Y_ABORT_UNLESS(DirectReadSessionManager.Defined());
-        DirectReadSessionManager->StopPartitionSessionGracefully(partitionSessionId, msg.last_direct_read_id());
-        return;
+    auto partitionStream = partitionStreamIt->second;
+
+    if (IsDirectRead()) {
+        if (msg.graceful()) {
+            // Keep reading DirectReadResponses until we get the one with direct_read_id == last_direct_read_id.
+            // Only then we send the TStopPartitionSessionEvent to the user.
+
+            Y_ABORT_UNLESS(DirectReadSessionManager.Defined());
+
+            if (!DirectReadSessionManager->StopPartitionSessionGracefully(partitionSessionId, msg.last_direct_read_id())) {
+                return;
+            }
+        } else {
+            PartitionStreams.erase(partitionStream->GetAssignId());
+            using TClosedEvent = TReadSessionEvent::TPartitionSessionClosedEvent;
+            bool pushRes = EventsQueue->PushEvent(partitionStream,
+                TClosedEvent(partitionStream, TClosedEvent::EReason::StopConfirmedByUser),
+                deferred);
+
+            if (!pushRes) {
+                AbortImpl();
+                return;
+            }
+        }
     }
+
 
     StopPartitionSessionImpl(partitionStreamIt->second, msg.graceful(), /*fromControlSession=*/ true, deferred);
 }
@@ -1721,7 +1768,7 @@ void TSingleClusterReadSessionImpl<UseMigrationProtocol>::OnDecompressionInfoDes
     DecompressedDataSize -= decompressedSize;
 
     if constexpr (!UseMigrationProtocol) {
-        LOG_LAZY(Log, TLOG_DEBUG, GetLogPrefix() << "Returning serverBytesSize = " << serverBytesSize << " to budget");
+        // LOG_LAZY(Log, TLOG_DEBUG, GetLogPrefix() << "Returning serverBytesSize = " << serverBytesSize << " to budget");
         ReadSizeBudget += serverBytesSize;
     }
 
@@ -1756,7 +1803,7 @@ void TSingleClusterReadSessionImpl<UseMigrationProtocol>::OnDataDecompressed(i64
         return;
     }
     if constexpr (!UseMigrationProtocol) {
-        LOG_LAZY(Log, TLOG_DEBUG, GetLogPrefix() << "Returning serverBytesSize = " << serverBytesSize << " to budget");
+        // LOG_LAZY(Log, TLOG_DEBUG, GetLogPrefix() << "Returning serverBytesSize = " << serverBytesSize << " to budget");
         ReadSizeBudget += serverBytesSize;
     }
     ContinueReadingDataImpl();
@@ -2877,10 +2924,10 @@ void TDataDecompressionEvent<UseMigrationProtocol>::TakeData(TIntrusivePtr<TPart
     // Clear data to free internal session's memory.
     messageData.clear_data();
 
-    LOG_LAZY(partitionStream->GetLog(), TLOG_DEBUG, TStringBuilder()
-                                        << "Take Data. Partition " << partitionStream->GetPartitionId()
-                                        << ". Read: {" << Batch << ", " << Message << "} ("
-                                        << minOffset << "-" << maxOffset << ")");
+    // LOG_LAZY(partitionStream->GetLog(), TLOG_DEBUG, TStringBuilder()
+    //                                     << "Take Data. Partition " << partitionStream->GetPartitionId()
+    //                                     << ". Read: {" << Batch << ", " << Message << "} ("
+    //                                     << minOffset << "-" << maxOffset << ")");
 }
 
 template<bool UseMigrationProtocol>
@@ -2947,7 +2994,7 @@ void TDataDecompressionInfo<UseMigrationProtocol>::TDecompressionTask::operator(
     }
     i64 minOffset = Max<i64>();
     i64 maxOffset = 0;
-    const i64 partition_id = [parent](){
+    [[maybe_unused]] const i64 partition_id = [parent](){
         if constexpr (UseMigrationProtocol) {
             return parent->ServerMessage.partition();
         } else {
@@ -2999,11 +3046,11 @@ void TDataDecompressionInfo<UseMigrationProtocol>::TDecompressionTask::operator(
             }
         }
     }
-    if (auto session = parent->CbContext->LockShared()) {
-        LOG_LAZY(session->GetLog(), TLOG_DEBUG, TStringBuilder() << "Decompression task done. Partition/PartitionSessionId: "
-                                                                 << partition_id << " (" << minOffset << "-"
-                                                                 << maxOffset << ")");
-    }
+    // if (auto session = parent->CbContext->LockShared()) {
+    //     LOG_LAZY(session->GetLog(), TLOG_DEBUG, TStringBuilder() << "Decompression task done. Partition/PartitionSessionId: "
+    //                                                              << partition_id << " (" << minOffset << "-"
+    //                                                              << maxOffset << ")");
+    // }
     Y_ASSERT(dataProcessed == SourceDataSize);
 
     parent->OnDataDecompressed(SourceDataSize, EstimatedDecompressedSize, DecompressedSize, messagesProcessed);

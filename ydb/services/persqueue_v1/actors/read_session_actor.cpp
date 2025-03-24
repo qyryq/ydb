@@ -1372,7 +1372,7 @@ void TReadSessionActor<UseMigrationProtocol>::Handle(TEvPQProxy::TEvUpdateSessio
         result.mutable_update_partition_session()->set_partition_session_id(assignId);
         result.mutable_update_partition_session()->mutable_partition_location()->set_node_id(ev->Get()->NodeId);
         result.mutable_update_partition_session()->mutable_partition_location()->set_generation(ev->Get()->Generation);
-
+        Cerr << (TStringBuilder() << "XXXXX update partition session " << assignId << " to " << ev->Get()->NodeId << ":" << ev->Get()->Generation);
     }
 
     LOG_INFO_S(ctx, NKikimrServices::PQ_READ_PROXY, PQ_LOG_PREFIX << " sending to client update partition stream event");

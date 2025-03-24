@@ -18,7 +18,7 @@ namespace NYdb::inline Dev {
     }
 }
 
-namespace NYdb::inline V3::NTopic {
+namespace NYdb::inline Dev::NTopic {
 
 enum class EMeteringMode : uint32_t {
     Unspecified = 0,

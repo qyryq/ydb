@@ -1384,6 +1384,8 @@ Y_UNIT_TEST_SUITE(TPersQueueTest) {
         setup.DoWrite(pqClient->GetDriver(), "acc/topic3", 10_KB, 1);
         setup.Commit(range, assignRes.AssignId);
         setup.SendDirectReadAck(assignId, 2);
+
+        Sleep(TDuration::Seconds(15));
     }
 
     Y_UNIT_TEST(DirectReadRestartTablet) {
