@@ -1460,8 +1460,8 @@ Y_UNIT_TEST_SUITE_F(DirectReadWithControlSession, TDirectReadTestsFixture) {
             setup.AddDirectReadResponse(r.StartDirectReadPartitionSessionResponse(startPartitionSessionRequest.PartitionSessionId));
         }
 
-        i64 offset = 0, i = 0;
         i64 bytesSize = 12345;
+        i64 directReadId = 1;
 
         auto resp = TMockDirectReadSessionProcessor::TServerReadInfo();
         resp.PartitionData(startPartitionSessionRequest.PartitionSessionId, directReadId, bytesSize);

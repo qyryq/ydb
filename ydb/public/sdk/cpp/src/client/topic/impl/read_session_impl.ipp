@@ -1357,10 +1357,11 @@ inline void TSingleClusterReadSessionImpl<false>::OnDirectReadDone(
         ack.set_partition_session_id(response.partition_session_id());
         WriteToProcessorImpl(std::move(req));
 
-        if (!response.has_partition_data()) {
+        if (!response.has_partition_data() || response.partition_data().batches_size() == 0) {
             // Sometimes the server might send an empty DirectReadResponse with a non-zero bytes_size, that we should take into account.
             ReadSizeBudget += response.bytes_size();
             ReadSizeServerDelta -= response.bytes_size();
+            WaitingReadResponse = false;
             ContinueReadingDataImpl();
             return;
         }
