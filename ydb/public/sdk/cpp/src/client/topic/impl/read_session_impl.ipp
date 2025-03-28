@@ -336,7 +336,10 @@ bool TSingleClusterReadSessionImpl<UseMigrationProtocol>::Reconnect(const TPlain
         ++ConnectionAttemptsDone;
 
         if constexpr (!UseMigrationProtocol) {
-            DirectReadSessionManager.Clear();
+            if (DirectReadSessionManager) {
+                DirectReadSessionManager->Close();
+                DirectReadSessionManager.Clear();
+            }
         }
 
         // Set new context
