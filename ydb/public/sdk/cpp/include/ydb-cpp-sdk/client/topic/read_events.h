@@ -41,6 +41,14 @@ public:
         return Location;
     }
 
+    /*TDirectReadId*/ i64 GetNextDirectReadId() const {
+        return NextDirectReadId;
+    }
+
+    TMaybe</*TDirectReadId*/ i64> GetLastDirectReadId() const {
+        return LastDirectReadId;
+    }
+
 protected:
     // PartitionSessionId here and StreamReadMessage.PartitionSession.partition_session_id are not the same IDs!
     // This one is generated on the client side, and the other one on the server side.
@@ -50,6 +58,8 @@ protected:
     std::string TopicPath;
     uint64_t PartitionId;
     TMaybe<TPartitionLocation> Location;
+    /*TDirectReadId*/ i64 NextDirectReadId = 1;
+    TMaybe</*TDirectReadId*/ i64> LastDirectReadId;
 };
 
 template<>

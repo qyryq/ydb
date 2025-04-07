@@ -662,6 +662,16 @@ public:
         FirstNotReadOffset = offset;
     }
 
+    template <bool V = UseMigrationProtocol, class = std::enable_if_t<!V>>
+    void SetNextDirectReadId(const i64 id) {
+        TAPartitionStream<false>::NextDirectReadId = id;
+    }
+
+    template <bool V = UseMigrationProtocol, class = std::enable_if_t<!V>>
+    void SetLastDirectReadId(const i64 id) {
+        TAPartitionStream<false>::LastDirectReadId = id;
+    }
+
     void Commit(ui64 startOffset, ui64 endOffset) /*override*/;
     void RequestStatus() override;
 
@@ -1247,7 +1257,7 @@ private:
     // void OnDirectReadDone(Ydb::Topic::StreamDirectReadMessage::DirectReadResponse&&, TDeferredActions<false>&);
     void OnDirectReadDone(std::shared_ptr<TLockFreeQueue<Ydb::Topic::StreamDirectReadMessage::DirectReadResponse>>); //, TDeferredActions<false>&);
     void StopPartitionSession(TPartitionSessionId);
-    void StopPartitionSessionImpl(TIntrusivePtr<TPartitionStreamImpl<false>>, bool graceful, bool fromControlSession, TDeferredActions<false>&);
+    void StopPartitionSessionImpl(TIntrusivePtr<TPartitionStreamImpl<false>>, bool graceful, TDeferredActions<false>&);
 
     // Assumes that we're under lock.
     template<typename TMessage>

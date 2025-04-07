@@ -172,7 +172,7 @@ TDirectReadSessionManager::~TDirectReadSessionManager() {
 }
 
 TStringBuilder TDirectReadSessionManager::GetLogPrefix() const {
-    return TStringBuilder() << "TDirectReadSessionManager ServerSessionId=" << ServerSessionId << " ";
+    return TStringBuilder() << static_cast<const void*>(this) << " TDirectReadSessionManager ServerSessionId=" << ServerSessionId << " ";
 }
 
 TDirectReadSessionContextPtr TDirectReadSessionManager::CreateDirectReadSession(TNodeId nodeId) {
@@ -222,8 +222,8 @@ void TDirectReadSessionManager::DeletePartitionSession(TPartitionSessionId parti
     if (auto session = it->second->LockShared()) {
         LOG_LAZY(Log, TLOG_DEBUG, GetLogPrefix() << "DeletePartitionSession " << partitionSessionId << " LockShared");
         session->DeletePartitionSession(partitionSessionId);
+        Locations.erase(partitionSessionId);
         if (session->Closed()) {
-            Locations.erase(partitionSessionId);
             LOG_LAZY(Log, TLOG_DEBUG, GetLogPrefix() << "DeletePartitionSession " << partitionSessionId << " erase");
             directReadSessionContextPtr = it->second;
             NodeSessions.erase(it);
@@ -277,7 +277,7 @@ void TDirectReadSessionManager::UpdatePartitionSession(TPartitionSessionId parti
     });
 }
 
-void TDirectReadSessionManager::ErasePartitionSession(TPartitionSessionId partitionSessionId) {
+TDirectReadSessionContextPtr TDirectReadSessionManager::ErasePartitionSession(TPartitionSessionId partitionSessionId) {
     LOG_LAZY(Log, TLOG_DEBUG, GetLogPrefix() << "ErasePartitionSession " << partitionSessionId);
 
     auto locIt = Locations.find(partitionSessionId);
@@ -286,11 +286,14 @@ void TDirectReadSessionManager::ErasePartitionSession(TPartitionSessionId partit
 
     auto sessionIt = NodeSessions.find(nodeId);
     Y_ABORT_UNLESS(sessionIt != NodeSessions.end());
+    TDirectReadSessionContextPtr directReadSessionContextPtr = sessionIt->second;
 
     // Still need to Cancel the TCallbackContext<TDirectReadSession>.
     LOG_LAZY(Log, TLOG_DEBUG, GetLogPrefix() << "ErasePartitionSession " << partitionSessionId << " erase");
     NodeSessions.erase(sessionIt);
     Locations.erase(partitionSessionId);
+
+    return directReadSessionContextPtr;
 }
 
 void TDirectReadSessionManager::StopPartitionSession(TPartitionSessionId partitionSessionId) {
@@ -315,7 +318,7 @@ bool TDirectReadSessionManager::StopPartitionSessionGracefully(TPartitionSession
         nodeSession->SetLastDirectReadId(partitionSessionId, lastDirectReadId);
 
         // Delete the partition session, if we've already received the lastDirectReadId.
-        // nodeSession->DeletePartitionSessionIfNeeded(partitionSessionId);
+        nodeSession->DeletePartitionSessionIfNeeded(partitionSessionId);
 
         return true;
     }
@@ -444,7 +447,7 @@ void TDirectReadSession::DeletePartitionSessionIfNeeded(TPartitionSessionId part
 
         LOG_LAZY(Log, TLOG_DEBUG, GetLogPrefix() << "DeletePartitionSessionIfNeeded 3 partitionSessionId=" << partitionSessionId << " partitionSession.LastDirectReadId=" << partitionSession.LastDirectReadId << " partitionSession.NextDirectReadId=" << partitionSession.NextDirectReadId);
 
-        if (partitionSession.LastDirectReadId.Defined() && partitionSession.NextDirectReadId > partitionSession.LastDirectReadId) {
+        if (partitionSession.LastDirectReadId.Defined() && partitionSession.NextDirectReadId >= partitionSession.LastDirectReadId) {
             LOG_LAZY(Log, TLOG_DEBUG, GetLogPrefix() << "DeletePartitionSessionIfNeeded 4 partitionSessionId=" << partitionSessionId);
             PartitionSessions.erase(partitionSessionIt);
 
@@ -488,7 +491,6 @@ void TDirectReadSession::DeletePartitionSessionImpl(TPartitionSessionId partitio
 
     if (PartitionSessions.empty()) {
         CloseImpl();
-        ControlCallbacks->StopPartitionSession(partitionSessionId);
     }
 }
 
@@ -525,7 +527,20 @@ void TDirectReadSession::OnReadDone(NYdbGrpc::TGrpcStatus&& grpcStatus, size_t c
         if (!IsErrorMessage(*ServerMessage) && ServerMessage->server_message_case() != TDirectReadServerMessage::kDirectReadResponse) {
             Cerr << (TStringBuilder() << "XXXXX subsession ServerMessage = " << ServerMessage->ShortDebugString() << '\n');
         } else {
-            Cerr << (TStringBuilder() << "XXXXX subsession ServerMessage = DirectReadResponse\n");
+            const auto& data = ServerMessage->direct_read_response().partition_data();
+            const auto partitionSessionId = ServerMessage->direct_read_response().partition_session_id();
+            if (data.batches_size() == 0) {
+                Cerr << (TStringBuilder() << "XXXXX subsession ServerMessage = DirectReadResponse EMPTY\n");
+            } else {
+                const auto& firstBatch = data.batches(0);
+                const auto firstOffset = firstBatch.message_data(0).offset();
+                const auto& lastBatch = data.batches(data.batches_size() - 1);
+                const auto lastOffset = lastBatch.message_data(lastBatch.message_data_size() - 1).offset();
+                Cerr << (TStringBuilder() << "XXXXX subsession ServerMessage = DirectReadResponse partitionSessionId = " << partitionSessionId
+                     << " directReadId = " << ServerMessage->direct_read_response().direct_read_id()
+                     << " firstOffset = " << firstOffset
+                     << " lastOffset = " << lastOffset << '\n');
+            }
         }
 
         if (errorStatus.Ok()) {
@@ -571,22 +586,9 @@ void TDirectReadSession::OnReadDone(NYdbGrpc::TGrpcStatus&& grpcStatus, size_t c
                 cbContext = SelfContext, partitionSessionId = partitionSessionId.value()
             ]() {
                 callbacks->OnDirectReadDone(messages);
-                if (auto s = cbContext->LockShared()) {
-                    s->DeletePartitionSessionIfNeeded(partitionSessionId);
-                }
             }
         );
     }
-
-    // TODO(qyryq)
-    // with_lock (Lock) {
-    //     if (partitionSession.LastDirectReadId.Defined() && partitionSession.NextDirectReadId == partitionSession.LastDirectReadId) {
-    //         // We've already got a graceful StopPartitionSessionRequest through the control session,
-    //         // that told us the LastDirectReadId, we should read up to.
-    //         // We have read all available data, time to stop the partition session.
-    //         DeletePartitionSessionImpl(partitionSessionId);
-    //     }
-    // }
 
     if (!errorStatus.Ok()) {
         ReadSessionSettings.Counters_->Errors->Inc();
@@ -711,10 +713,11 @@ void TDirectReadSession::OnReadDoneImpl(Ydb::Topic::StreamDirectReadMessage::Sta
     // TODO(qyryq) Check response.generation().
     auto it = PartitionSessions.find(partitionSessionId);
 
-    // TODO(qyryq) If the control session stops the partition session,
-    //             and then we get a late Start-response, the iterator will point to the end.
-    //             In that case, we simply need to return here.
-    Y_ABORT_UNLESS(it != PartitionSessions.end());
+    if (it == PartitionSessions.end()) {
+        // We could get a StopPartitionSessionRequest from server before processing this response.
+        LOG_LAZY(Log, TLOG_DEBUG, GetLogPrefix() << "Got StartDirectReadPartitionSessionResponse for unknown partition session " << partitionSessionId);
+        return;
+    }
 
     auto& partitionSession = it->second;
 
@@ -737,7 +740,12 @@ void TDirectReadSession::OnReadDoneImpl(Ydb::Topic::StreamDirectReadMessage::Dir
     Y_ABORT_UNLESS(partitionSessionId == response.partition_data().partition_session_id());
 
     auto it = PartitionSessions.find(partitionSessionId);
-    Y_ABORT_UNLESS(it != PartitionSessions.end());
+
+    if (it == PartitionSessions.end()) {
+        LOG_LAZY(Log, TLOG_DEBUG, GetLogPrefix() << "Got a DirectReadResponse for a partition session that we don't know about partition_session_id=" << partitionSessionId << ". Ignoring.");
+        return;
+    }
+
     auto& partitionSession = it->second;
 
     // LOG_LAZY(Log, TLOG_DEBUG, GetLogPrefix() << "Waiting for NextDirectReadId=" << partitionSession.NextDirectReadId << ". Got DirectReadResponse " << response.ShortDebugString());
@@ -813,7 +821,7 @@ void TDirectReadSession::ReadFromProcessorImpl(TDeferredActions<false>& deferred
 }
 
 TStringBuilder TDirectReadSession::GetLogPrefix() const {
-    return TStringBuilder() << "TDirectReadSession ServerSessionId=" << ServerSessionId << " NodeId=" << NodeId << " ";
+    return TStringBuilder() << static_cast<const void*>(this) << " TDirectReadSession ServerSessionId=" << ServerSessionId << " NodeId=" << NodeId << " ";
 }
 
 void TDirectReadSession::InitImpl(TDeferredActions<false>& deferred) {
@@ -942,7 +950,8 @@ bool TDirectReadSession::Reconnect(const TPlainStatus& status) {
             if (!RetryState) {
                 RetryState = ReadSessionSettings.RetryPolicy_->CreateRetryState();
             }
-            TMaybe<TDuration> nextDelay = RetryState->GetNextRetryDelay(status.Status);
+            LOG_LAZY(Log, TLOG_EMERG, GetLogPrefix() << "Got BAD_REQUEST, replace it with OVERLOADED");
+            TMaybe<TDuration> nextDelay = RetryState->GetNextRetryDelay(status.Status == EStatus::BAD_REQUEST ? EStatus::OVERLOADED : status.Status);
             if (!nextDelay) {
                 return false;
             }

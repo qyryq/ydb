@@ -61,7 +61,6 @@ public:
     void AbortSession(TSessionClosedEvent&& closeEvent) override;
     void ScheduleCallback(TDuration delay, std::function<void()> callback) override;
     void ScheduleCallback(TDuration delay, std::function<void()> callback, TDeferredActions<false>&) override;
-
     void StopPartitionSession(TPartitionSessionId) override;
 
 private:
@@ -235,7 +234,7 @@ public:
 
     void StartPartitionSession(TDirectReadPartitionSession&&);
     void UpdatePartitionSession(TPartitionSessionId, TPartitionLocation);
-    void ErasePartitionSession(TPartitionSessionId);
+    TDirectReadSessionContextPtr ErasePartitionSession(TPartitionSessionId);
     void StopPartitionSession(TPartitionSessionId);
 
     // Update LastDirectReadId in the partition session object.

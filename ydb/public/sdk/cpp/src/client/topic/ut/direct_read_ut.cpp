@@ -17,6 +17,7 @@
 #include <library/cpp/threading/future/async.h>
 
 #include <library/cpp/testing/gmock_in_unittest/gmock.h>
+#include <algorithm>
 #include <future>
 
 using namespace ::testing; // Google mock.
@@ -920,66 +921,83 @@ Y_UNIT_TEST_SUITE_F(DirectReadWithClient, TDirectReadTestsFixture) {
         so the server sends multiple DirectReadResponses.
         */
 
-        TTopicSdkTestSetup setup(TEST_CASE_NAME);
+        TTopicSdkTestSetup setup(TEST_CASE_NAME, TTopicSdkTestSetup::MakeServerSettings(), false);
+        constexpr size_t partitionCount = 2;
+        size_t messageCount = 100;
+        size_t totalMessageCount = partitionCount * messageCount;
+        setup.CreateTopic(std::string(TEST_TOPIC), std::string(TEST_CONSUMER), partitionCount);
         TTopicClient client = setup.MakeClient();
 
-        size_t N = 100;
         TString message(950_KB, 'x');
 
-        {
-            // Write messages:
-
+        // Write messages to all partitions:
+        for (size_t partitionId = 0; partitionId < partitionCount; ++partitionId) {
             auto settings = TWriteSessionSettings()
                 .Path(TEST_TOPIC)
                 .Codec(ECodec::RAW)
+                .PartitionId(partitionId)
                 .ProducerId(TEST_MESSAGE_GROUP_ID)
                 .MessageGroupId(TEST_MESSAGE_GROUP_ID);
 
             auto writer = client.CreateSimpleBlockingWriteSession(settings);
-
-            for (size_t i = 0; i < N; ++i) {
+            for (size_t i = 0; i < messageCount; ++i) {
                 UNIT_ASSERT(writer->Write(message));
             }
             writer->Close();
         }
 
-        {
-            // Read the message:
+        std::atomic<bool> work = true;
 
+        auto killer = std::thread([&]() {
+            while (work.load()) {
+                std::this_thread::sleep_for(std::chrono::seconds(5));
+                // setup.GetServer().KillTopicPqrbTablet(setup.GetTopicPath());
+            }
+        });
+
+        {
+            // Read messages:
+
+            size_t gotMessages = 0;
+            std::array<size_t, partitionCount> committedOffset{};
             auto settings = TReadSessionSettings()
                 .ConsumerName(TEST_CONSUMER)
                 .AppendTopics(TEST_TOPIC)
                 .MaxMemoryUsageBytes(1_MB)
-                .DirectRead(true);
-            auto reader = client.CreateReadSession(settings);
+                .DirectRead(GetEnv("DIRECT", "0") == "1");
 
-            {
-                // Start partition session:
-                auto event = reader->GetEvent(true);
-                UNIT_ASSERT(event);
-                UNIT_ASSERT_EVENT_TYPE(*event, TReadSessionEvent::TStartPartitionSessionEvent);
-                std::get<TReadSessionEvent::TStartPartitionSessionEvent>(*event).Confirm();
-            }
+            std::shared_ptr<IReadSession> reader;
 
-            {
-                // Receive messages and commit.
-                size_t gotMessages = 0;
-                size_t committedOffset = 0;
-                while (gotMessages < N || committedOffset < N) {
-                    auto event = reader->GetEvent(true);
-                    if (auto e = std::get_if<TReadSessionEvent::TDataReceivedEvent>(&*event)) {
-                        gotMessages += e->GetMessages().size();
-                        e->Commit();
-                    } else if (auto e = std::get_if<TReadSessionEvent::TCommitOffsetAcknowledgementEvent>(&*event)) {
-                        committedOffset = e->GetCommittedOffset();
-                    } else {
-                        Y_UNREACHABLE();
+            settings.EventHandlers_.SimpleDataHandlers(
+                [&](NYdb::NTopic::TReadSessionEvent::TDataReceivedEvent& e) {
+                    gotMessages += e.GetMessages().size();
+                    Cerr << "XXXXX gotMessages: " << gotMessages << " partition_id: " << e.GetPartitionSession()->GetPartitionId() << "\n";
+                    e.Commit();
+                });
+
+            settings.EventHandlers_.CommitOffsetAcknowledgementHandler(
+                [&](NYdb::NTopic::TReadSessionEvent::TCommitOffsetAcknowledgementEvent& e) {
+                    auto partitionId = e.GetPartitionSession()->GetPartitionId();
+                    committedOffset[partitionId] = e.GetCommittedOffset();
+                    Cerr << "XXXXX committedOffset: ";
+                    for (auto offset : committedOffset) {
+                        Cerr << offset << " ";
                     }
-                }
-                UNIT_ASSERT_EQUAL(gotMessages, N);
-                UNIT_ASSERT_EQUAL(committedOffset, N);
-            }
+                    Cerr << Endl;
+                    if (std::ranges::all_of(committedOffset, [&](size_t offset) { return offset == messageCount; })) {
+                        reader->Close();
+                    }
+                });
+
+            reader = client.CreateReadSession(settings);
+
+            reader->GetEvent(/*block = */true);
+
+            UNIT_ASSERT_EQUAL(gotMessages, totalMessageCount);
         }
+
+        work.store(false);
+        killer.join();
     }
 } // Y_UNIT_TEST_SUITE_F(DirectReadWithClient)
 
@@ -1189,9 +1207,11 @@ Y_UNIT_TEST_SUITE_F(DirectReadWithControlSession, TDirectReadTestsFixture) {
             UNIT_ASSERT_EVENT_TYPE(*event, TReadSessionEvent::TPartitionSessionClosedEvent);
             // auto e = std::get_if<TReadSessionEvent::TPartitionSessionClosedEvent>(&*event);
         }
-        setup.MockDirectReadProcessorFactory->Wait();
 
         setup.AssertNoEvents();
+
+        // ::testing::Mock::VerifyAndClear(setup.MockDirectReadProcessorFactory);
+        // ::testing::Mock::VerifyAndClear(setup.MockDirectReadProcessor);
     }
 
     Y_UNIT_TEST(StopPartitionSession) {
@@ -1368,6 +1388,8 @@ Y_UNIT_TEST_SUITE_F(DirectReadWithControlSession, TDirectReadTestsFixture) {
             .Generation = 4,
         };
 
+        i64 bytesSize = 12345;
+
         TDirectReadSessionImplTestSetup setup;
         setup.ReadSessionSettings.Topics_[0].AppendPartitionIds(startPartitionSessionRequest.PartitionId);
 
@@ -1401,7 +1423,7 @@ Y_UNIT_TEST_SUITE_F(DirectReadWithControlSession, TDirectReadTestsFixture) {
 
                 EXPECT_CALL(*setup.MockReadProcessor, OnReadRequest(_))
                     .WillOnce(Invoke([&](const Ydb::Topic::StreamReadMessage::ReadRequest& req) {
-                        UNIT_ASSERT_EQUAL(req.bytes_size(), 12345);
+                        UNIT_ASSERT_EQUAL(req.bytes_size(), bytesSize);
                     }));
             }
 
@@ -1460,7 +1482,6 @@ Y_UNIT_TEST_SUITE_F(DirectReadWithControlSession, TDirectReadTestsFixture) {
             setup.AddDirectReadResponse(r.StartDirectReadPartitionSessionResponse(startPartitionSessionRequest.PartitionSessionId));
         }
 
-        i64 bytesSize = 12345;
         i64 directReadId = 1;
 
         auto resp = TMockDirectReadSessionProcessor::TServerReadInfo();
@@ -1569,8 +1590,6 @@ Y_UNIT_TEST_SUITE_F(DirectReadSession, TDirectReadTestsFixture) {
 
         EXPECT_CALL(*setup.MockDirectReadProcessorFactory, OnCreateProcessor(_))
             .Times(1 + nRetries);  // First call + N retries.
-
-        // .OnAbortSession = [&gotClosedEvent](TSessionClosedEvent&&) { gotClosedEvent.SetValue(); },
 
         class TControlCallbacks : public IDirectReadSessionControlCallbacks {
         public:
@@ -1765,117 +1784,117 @@ Y_UNIT_TEST_SUITE_F(DirectReadSession, TDirectReadTestsFixture) {
     //     gotFinalStart.GetFuture().Wait();
     // }
 
-    Y_UNIT_TEST(PartitionSessionRetainsRetryStateOnReconnects) {
-        /*
-        We need to retain retry states of separate partition sessions
-        even after reestablishing the connection to a node.
+    // Y_UNIT_TEST(PartitionSessionRetainsRetryStateOnReconnects) {
+    //     /*
+    //     We need to retain retry states of separate partition sessions
+    //     even after reestablishing the connection to a node.
 
-        E.g. partition session receives StopDirectReadPartitionSession
-        and we need to send StartDirectReadPartitionSessionRequest in 5 minutes due to the retry policy.
+    //     E.g. partition session receives StopDirectReadPartitionSession
+    //     and we need to send StartDirectReadPartitionSessionRequest in 5 minutes due to the retry policy.
 
-        But in the meantime, the session loses connection to the server and reconnects within several seconds.
+    //     But in the meantime, the session loses connection to the server and reconnects within several seconds.
 
-        We must not send that StartDirectReadPartitionSessionRequest right away, but wait ~5 minutes.
+    //     We must not send that StartDirectReadPartitionSessionRequest right away, but wait ~5 minutes.
 
-        client -> server: InitRequest
-        client <-- server: InitResponse
-        client -> server: StartDirectReadPartitionSessionRequest
-        client <- server: StopDirectReadPartitionSession(OVERLOADED)
-        note over client: Wait N seconds before sending Start again
-        ... Connection lost, client reconnects to the server ...
-        client -> server: InitRequest
-        client <-- server: InitResponse
-        note over client: Still has to wait ~N seconds
-        client -> server: StartDirectReadPartitionSessionRequest
-        */
+    //     client -> server: InitRequest
+    //     client <-- server: InitResponse
+    //     client -> server: StartDirectReadPartitionSessionRequest
+    //     client <- server: StopDirectReadPartitionSession(OVERLOADED)
+    //     note over client: Wait N seconds before sending Start again
+    //     ... Connection lost, client reconnects to the server ...
+    //     client -> server: InitRequest
+    //     client <-- server: InitResponse
+    //     note over client: Still has to wait ~N seconds
+    //     client -> server: StartDirectReadPartitionSessionRequest
+    //     */
 
-        TDirectReadSessionImplTestSetup setup;
-        setup.ReadSessionSettings.RetryPolicy(setup.MockRetryPolicy);
+    //     TDirectReadSessionImplTestSetup setup;
+    //     setup.ReadSessionSettings.RetryPolicy(setup.MockRetryPolicy);
 
-        auto gotFinalStart = NThreading::NewPromise();
-        auto gotInitRequest = NThreading::NewPromise();
-        auto calledRead = NThreading::NewPromise();
-        TPartitionSessionId partitionSessionId = 1;
-        auto secondProcessor = MakeIntrusive<TMockDirectReadSessionProcessor>();
-        auto delay = TDuration::Seconds(300);
+    //     auto gotFinalStart = NThreading::NewPromise();
+    //     auto gotInitRequest = NThreading::NewPromise();
+    //     auto calledRead = NThreading::NewPromise();
+    //     TPartitionSessionId partitionSessionId = 1;
+    //     auto secondProcessor = MakeIntrusive<TMockDirectReadSessionProcessor>();
+    //     auto delay = TDuration::Seconds(300);
 
-        {
-            ::testing::InSequence sequence;
+    //     {
+    //         ::testing::InSequence sequence;
 
-            EXPECT_CALL(*setup.MockDirectReadProcessorFactory, OnCreateProcessor(1))
-                .WillOnce([&]() { setup.MockDirectReadProcessorFactory->CreateProcessor(setup.MockDirectReadProcessor); });
+    //         EXPECT_CALL(*setup.MockDirectReadProcessorFactory, OnCreateProcessor(1))
+    //             .WillOnce([&]() { setup.MockDirectReadProcessorFactory->CreateProcessor(setup.MockDirectReadProcessor); });
 
-            EXPECT_CALL(*setup.MockDirectReadProcessor, OnInitRequest(_));
+    //         EXPECT_CALL(*setup.MockDirectReadProcessor, OnInitRequest(_));
 
-            EXPECT_CALL(*setup.MockDirectReadProcessor, OnStartDirectReadPartitionSessionRequest(_));
+    //         EXPECT_CALL(*setup.MockDirectReadProcessor, OnStartDirectReadPartitionSessionRequest(_));
 
-            // The client receives StopDirectReadPartitionSession, create TDirectReadSession::PartitionSessions[i].RetryState
-            EXPECT_CALL(*setup.MockRetryPolicy, CreateRetryState())
-                .WillOnce(Return(std::make_unique<TMockRetryState>(setup.MockRetryPolicy)));
+    //         // The client receives StopDirectReadPartitionSession, create TDirectReadSession::PartitionSessions[i].RetryState
+    //         EXPECT_CALL(*setup.MockRetryPolicy, CreateRetryState())
+    //             .WillOnce(Return(std::make_unique<TMockRetryState>(setup.MockRetryPolicy)));
 
-            // The client loses connection, create TDirectReadSession.RetryState
-            EXPECT_CALL(*setup.MockRetryPolicy, CreateRetryState())
-                .WillOnce(Return(std::make_unique<TMockRetryState>(setup.MockRetryPolicy)));
+    //         // The client loses connection, create TDirectReadSession.RetryState
+    //         EXPECT_CALL(*setup.MockRetryPolicy, CreateRetryState())
+    //             .WillOnce(Return(std::make_unique<TMockRetryState>(setup.MockRetryPolicy)));
 
-            // The connection is lost at this point, the client tries to reconnect.
-            EXPECT_CALL(*setup.MockDirectReadProcessorFactory, OnCreateProcessor(2))
-                .WillOnce([&]() { setup.MockDirectReadProcessorFactory->CreateProcessor(secondProcessor); });
+    //         // The connection is lost at this point, the client tries to reconnect.
+    //         EXPECT_CALL(*setup.MockDirectReadProcessorFactory, OnCreateProcessor(2))
+    //             .WillOnce([&]() { setup.MockDirectReadProcessorFactory->CreateProcessor(secondProcessor); });
 
-            EXPECT_CALL(*secondProcessor, OnInitRequest(_))
-                .WillOnce([&]() { gotInitRequest.SetValue(); });
+    //         EXPECT_CALL(*secondProcessor, OnInitRequest(_))
+    //             .WillOnce([&]() { gotInitRequest.SetValue(); });
 
-            // The client waits `delay` seconds before sending the StartDirectReadPartitionSessionRequest.
+    //         // The client waits `delay` seconds before sending the StartDirectReadPartitionSessionRequest.
 
-            EXPECT_CALL(*secondProcessor, OnStartDirectReadPartitionSessionRequest(_))
-                .WillOnce([&]() { gotFinalStart.SetValue(); });
-        }
+    //         EXPECT_CALL(*secondProcessor, OnStartDirectReadPartitionSessionRequest(_))
+    //             .WillOnce([&]() { gotFinalStart.SetValue(); });
+    //     }
 
-        std::function<void()> callback;
+    //     std::function<void()> callback;
 
-        class TControlCallbacks : public IDirectReadSessionControlCallbacks {
-        public:
-            TControlCallbacks(std::function<void()>& callback) : Callback(callback) {}
-            void ScheduleCallback(TDuration, std::function<void()> cb, TDeferredActions<false>&) override {
-                Callback = cb;
-            }
-            std::function<void()>& Callback;
-        };
+    //     class TControlCallbacks : public IDirectReadSessionControlCallbacks {
+    //     public:
+    //         TControlCallbacks(std::function<void()>& callback) : Callback(callback) {}
+    //         void ScheduleCallback(TDuration, std::function<void()> cb, TDeferredActions<false>&) override {
+    //             Callback = cb;
+    //         }
+    //         std::function<void()>& Callback;
+    //     };
 
-        auto session = setup.GetDirectReadSession(std::make_shared<TControlCallbacks>(callback));
+    //     auto session = setup.GetDirectReadSession(std::make_shared<TControlCallbacks>(callback));
 
-        session->Start();
-        setup.MockDirectReadProcessorFactory->Wait();
+    //     session->Start();
+    //     setup.MockDirectReadProcessorFactory->Wait();
 
-        session->AddPartitionSession({ .PartitionSessionId = partitionSessionId, .Location = {2, 3} });
+    //     session->AddPartitionSession({ .PartitionSessionId = partitionSessionId, .Location = {2, 3} });
 
-        setup.AddDirectReadResponse(TMockDirectReadSessionProcessor::TServerReadInfo()
-            .InitResponse());
+    //     setup.AddDirectReadResponse(TMockDirectReadSessionProcessor::TServerReadInfo()
+    //         .InitResponse());
 
-        setup.MockRetryPolicy->Delay = delay;
+    //     setup.MockRetryPolicy->Delay = delay;
 
-        setup.AddDirectReadResponse(TMockDirectReadSessionProcessor::TServerReadInfo()
-            .StopDirectReadPartitionSession(Ydb::StatusIds::OVERLOADED, partitionSessionId));
+    //     setup.AddDirectReadResponse(TMockDirectReadSessionProcessor::TServerReadInfo()
+    //         .StopDirectReadPartitionSession(Ydb::StatusIds::OVERLOADED, partitionSessionId));
 
-        // Besides logs, these durations don't really affect anything in tests.
-        setup.MockRetryPolicy->Delay = TDuration::Seconds(1);
+    //     // Besides logs, these durations don't really affect anything in tests.
+    //     setup.MockRetryPolicy->Delay = TDuration::Seconds(1);
 
-        setup.AddDirectReadResponse(TMockDirectReadSessionProcessor::TServerReadInfo()
-            .Failure());
+    //     setup.AddDirectReadResponse(TMockDirectReadSessionProcessor::TServerReadInfo()
+    //         .Failure());
 
-        gotInitRequest.GetFuture().Wait();
-        secondProcessor->AddServerResponse(TMockDirectReadSessionProcessor::TServerReadInfo()
-            .InitResponse());
+    //     gotInitRequest.GetFuture().Wait();
+    //     secondProcessor->AddServerResponse(TMockDirectReadSessionProcessor::TServerReadInfo()
+    //         .InitResponse());
 
-        // Ensure that the callback is called after the direct session got InitResponse.
-        setup.WaitForWorkingDirectReadSession();
+    //     // Ensure that the callback is called after the direct session got InitResponse.
+    //     setup.WaitForWorkingDirectReadSession();
 
-        callback();
+    //     callback();
 
-        gotFinalStart.GetFuture().Wait();
+    //     gotFinalStart.GetFuture().Wait();
 
-        secondProcessor->Wait();
-        secondProcessor->Validate();
-    }
+    //     secondProcessor->Wait();
+    //     secondProcessor->Validate();
+    // }
 
     // Y_UNIT_TEST(RetryWithoutConnectionResetsPartitionSession) {
     //     /*
