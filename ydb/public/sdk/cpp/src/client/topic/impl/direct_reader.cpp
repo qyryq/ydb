@@ -298,11 +298,20 @@ TDirectReadSessionContextPtr TDirectReadSessionManager::ErasePartitionSession(TP
 
 void TDirectReadSessionManager::StopPartitionSession(TPartitionSessionId partitionSessionId) {
     auto locIt = Locations.find(partitionSessionId);
-    Y_ABORT_UNLESS(locIt != Locations.end());
+    if (locIt == Locations.end()) {
+        // This is possible when we get StartPartitionSessionRequest, then StopPartitionSessionRequest,
+        // without user calling TStartPartitionSessionEvent::Confirm.
+        LOG_LAZY(Log, TLOG_DEBUG, GetLogPrefix() << "StopPartitionSession " << partitionSessionId << " not found in Locations");
+        return;
+    }
     auto nodeId = locIt->second.GetNodeId();
 
     auto sessionIt = NodeSessions.find(nodeId);
-    Y_ABORT_UNLESS(sessionIt != NodeSessions.end());
+    if (sessionIt == NodeSessions.end()) {
+        // Same as above.
+        LOG_LAZY(Log, TLOG_DEBUG, GetLogPrefix() << "StopPartitionSession " << partitionSessionId << " not found in NodeSessions");
+        return;
+    }
 
     DeletePartitionSession(partitionSessionId, sessionIt);
 }
@@ -761,7 +770,7 @@ void TDirectReadSession::OnReadDoneImpl(Ydb::Topic::StreamDirectReadMessage::Dir
 
     Y_ABORT_UNLESS(directReadId == partitionSession.NextDirectReadId);
 
-    partitionSession.NextDirectReadId = directReadId + 1;
+    ++partitionSession.NextDirectReadId;
 
     IncomingMessagesForControlSession->Enqueue(std::move(response));
 
@@ -950,7 +959,9 @@ bool TDirectReadSession::Reconnect(const TPlainStatus& status) {
             if (!RetryState) {
                 RetryState = ReadSessionSettings.RetryPolicy_->CreateRetryState();
             }
-            LOG_LAZY(Log, TLOG_EMERG, GetLogPrefix() << "Got BAD_REQUEST, replace it with OVERLOADED");
+            if (status.Status == EStatus::BAD_REQUEST) {
+                LOG_LAZY(Log, TLOG_EMERG, GetLogPrefix() << "Got BAD_REQUEST, replace it with OVERLOADED");
+            }
             TMaybe<TDuration> nextDelay = RetryState->GetNextRetryDelay(status.Status == EStatus::BAD_REQUEST ? EStatus::OVERLOADED : status.Status);
             if (!nextDelay) {
                 return false;
