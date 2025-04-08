@@ -950,7 +950,7 @@ Y_UNIT_TEST_SUITE(TPersQueueTest) {
             Ydb::Topic::StreamDirectReadMessage::FromServer Response;
         };
 
-        TReadDataNoAckResult ReadDataNoAck(ui64 assignId, i64 directReadId) {
+        TReadDataNoAckResult ReadDataNoAck(ui64 assignId, i64 directReadId, i64 batchesSize = 1) {
             Cerr << "Wait for direct read id " << directReadId << Endl;
             Ydb::Topic::StreamDirectReadMessage::FromServer resp;
             UNIT_ASSERT(DirectStream->Read(&resp));
@@ -972,7 +972,10 @@ Y_UNIT_TEST_SUITE(TPersQueueTest) {
                 // This case is possible on DirectRead restarts. See test DirectReadBudgetOnRestart.
                 return { .Range = {0, 0}, .Response = resp };
             }
-            UNIT_ASSERT_C(data.batches_size() == 1, resp.DebugString());
+            if (batchesSize <= 1) {
+                // UNIT_ASSERT_C(data.batches_size() == batchesSize, resp.DebugString());
+                UNIT_ASSERT_VALUES_EQUAL(data.batches_size(), batchesSize);
+            }
             const auto& firstBatch = data.batches(0);
             const auto firstOffset = firstBatch.message_data(0).offset();
             const auto& lastBatch = data.batches(data.batches_size() - 1);
@@ -1203,7 +1206,7 @@ Y_UNIT_TEST_SUITE(TPersQueueTest) {
         UNIT_ASSERT_VALUES_EQUAL(cachedData->Data.begin()->second.Reads.size(), 0);
     }
 
-    Y_UNIT_TEST(DirectReadBudgetOnRestart) {
+    Y_UNIT_TEST(DirectReadBudgetOnRestartWithRetention) {
         // Correct bytes bookkeeping on tablet restarts.
         // Write a message. Read it without acknowledging it.
         // Write more messages, ensure that the old message is deleted by retention period.
@@ -1315,6 +1318,75 @@ Y_UNIT_TEST_SUITE(TPersQueueTest) {
         UNIT_ASSERT(resp.Range.first == resp.Range.second);
 
         // resp = setup.ReadDataNoAck(assignId, nextReadId);
+    }
+
+    Y_UNIT_TEST(DirectReadBudgetOnRestart) {
+        TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
+        SET_LOCALS;
+        TString topicPath{"acc/topic1"};
+        TString oldPath{"/Root/PQ/rt3.dc1--acc--topic1"};
+        TDirectReadTestSetup setup{server};
+
+        {
+            // 1. Write one message.
+            Cerr << (TStringBuilder() << "XXXXX Write 1 message" << Endl);
+            setup.DoWrite(pqClient->GetDriver(), topicPath, 1_MB, 1);
+        }
+
+        Cerr << (TStringBuilder() << "XXXXX InitControlSession" << Endl);
+        setup.InitControlSession(topicPath, 100_KB);
+
+        // Get StartPartitionSessionRequest, send StartPartitionSessionResponse.
+        auto assignRes = setup.GetNextAssign(topicPath);
+        UNIT_ASSERT_VALUES_EQUAL(assignRes.PartitionId, 0);
+        auto assignId = assignRes.AssignId;
+
+        Cerr << (TStringBuilder() << "XXXXX InitDirectSession" << Endl);
+        setup.InitDirectSession(topicPath);
+
+        // Send StartDirectReadPartitionSessionRequest, get StartDirectReadPartitionSessionResponse
+        setup.SendReadSessionAssign(assignId, assignRes.Generation);
+
+        // 2. Read the message back. It should contain only one offset.
+        ui64 nextReadId = 1;
+        Cerr << (TStringBuilder() << "XXXXX ReadDataNoAck" << Endl);
+        auto resp = setup.ReadDataNoAck(assignId, nextReadId);
+        ++nextReadId;
+
+        // 3. Log the bytes_size and offsets. Ensure that we've got 1MB of data.
+        const auto firstOffset = resp.Range.first;
+        const auto lastOffset = resp.Range.second;
+        Cerr << (TStringBuilder() << "XXXXX firstOffset = " << firstOffset << " lastOffset = " << lastOffset << Endl);
+
+        // 4. Write more messages.
+        Cerr << (TStringBuilder() << "XXXXX Write 40 1_MB messages" << Endl);
+        setup.DoWrite(pqClient->GetDriver(), topicPath, 1_MB, 40);
+
+        // 5. Kill the tablet.
+        Cerr << "XXXXX Kill tablet\n";
+        auto pathDescr = server.Server->AnnoyingClient->Ls(oldPath)->Record.GetPathDescription().GetPersQueueGroup();
+        auto tabletId = pathDescr.GetPartitions(0).GetTabletId();
+        server.Server->AnnoyingClient->KillTablet(*(server.Server->CleverServer), tabletId);
+        Cerr << "XXXXX ExpectDestroyPartitionSession\n";
+        setup.ExpectDestroyPartitionSession(assignId);
+
+        Cerr << "XXXXX SendDirectReadAck\n";
+        setup.SendDirectReadAck(assignId, 1);
+
+        // 6. Wait for the update_partition_session and set up a new direct read session.
+        Cerr << "XXXXX Get next assing\n";
+        auto nextAssignRes = setup.GetNextAssign(topicPath, assignRes.Generation);
+        assignId = nextAssignRes.AssignId;
+
+
+        Cerr << "XXXXX SendReadSessionAssign\n";
+        setup.SendReadSessionAssign(assignId, nextAssignRes.Generation, nextReadId);
+
+
+        Cerr << "XXXXX ReadDataNoAck\n";
+        resp = setup.ReadDataNoAck(assignId, nextReadId, 2);
+        Cerr << (TStringBuilder() << "XXXXX firstOffset = " << resp.Range.first << " lastOffset = " << resp.Range.second << Endl);
+        UNIT_ASSERT_VALUES_EQUAL(lastOffset + 1, resp.Range.first);
     }
 
     Y_UNIT_TEST(DirectReadBadCases) {
