@@ -1370,14 +1370,13 @@ Y_UNIT_TEST_SUITE(TPersQueueTest) {
         Cerr << "XXXXX ExpectDestroyPartitionSession\n";
         setup.ExpectDestroyPartitionSession(assignId);
 
-        Cerr << "XXXXX SendDirectReadAck\n";
-        setup.SendDirectReadAck(assignId, 1);
-
         // 6. Wait for the update_partition_session and set up a new direct read session.
         Cerr << "XXXXX Get next assing\n";
         auto nextAssignRes = setup.GetNextAssign(topicPath, assignRes.Generation);
         assignId = nextAssignRes.AssignId;
 
+        Cerr << "XXXXX SendDirectReadAck\n";
+        setup.SendDirectReadAck(assignId, 1);
 
         Cerr << "XXXXX SendReadSessionAssign\n";
         setup.SendReadSessionAssign(assignId, nextAssignRes.Generation, nextReadId);
@@ -1387,6 +1386,54 @@ Y_UNIT_TEST_SUITE(TPersQueueTest) {
         resp = setup.ReadDataNoAck(assignId, nextReadId, 2);
         Cerr << (TStringBuilder() << "XXXXX firstOffset = " << resp.Range.first << " lastOffset = " << resp.Range.second << Endl);
         UNIT_ASSERT_VALUES_EQUAL(lastOffset + 1, resp.Range.first);
+    }
+
+    Y_UNIT_TEST(DirectReadBudgetOnRestartMin) {
+        TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
+        SET_LOCALS;
+        TString topicPath{"acc/topic1"};
+        TString oldPath{"/Root/PQ/rt3.dc1--acc--topic1"};
+        TDirectReadTestSetup setup{server};
+
+        Cerr << "XXXXX Write 1 message\n";
+        setup.DoWrite(pqClient->GetDriver(), topicPath, 1_MB, 1);
+
+        Cerr << "XXXXX InitControlSession\n";
+        setup.InitControlSession(topicPath, 100_KB);
+
+        Cerr << "XXXXX Get StartPartitionSessionRequest, send StartPartitionSessionResponse\n";
+        auto assignRes = setup.GetNextAssign(topicPath);
+        UNIT_ASSERT_VALUES_EQUAL(assignRes.PartitionId, 0);
+        auto assignId = assignRes.AssignId;
+
+        Cerr << "XXXXX InitDirectSession\n";
+        setup.InitDirectSession(topicPath);
+
+        Cerr << "XXXXX Send StartDirectReadPartitionSessionRequest, get StartDirectReadPartitionSessionResponse\n";
+        setup.SendReadSessionAssign(assignId, assignRes.Generation);
+
+        ui64 nextReadId = 1;
+        Cerr << "XXXXX ReadDataNoAck\n";
+        auto resp = setup.ReadDataNoAck(assignId, nextReadId);
+        nextReadId = 2;
+
+        Cerr << "XXXXX Write more 1_MB messages\n";
+        setup.DoWrite(pqClient->GetDriver(), topicPath, 1_MB, 40);
+
+        Cerr << "XXXXX KillTablet\n";
+        auto pathDescr = server.Server->AnnoyingClient->Ls(oldPath)->Record.GetPathDescription().GetPersQueueGroup();
+        auto tabletId = pathDescr.GetPartitions(0).GetTabletId();
+        server.Server->AnnoyingClient->KillTablet(*(server.Server->CleverServer), tabletId);
+
+        Cerr << "XXXXX ExpectDestroyPartitionSession\n";
+        setup.ExpectDestroyPartitionSession(assignId);
+
+        Cerr << "XXXXX GetNextAssign\n";
+        auto nextAssignRes = setup.GetNextAssign(topicPath, assignRes.Generation);
+        assignId = nextAssignRes.AssignId;
+
+        Cerr << "XXXXX SendDirectReadAck\n";
+        setup.SendDirectReadAck(assignId, 1);
     }
 
     Y_UNIT_TEST(DirectReadBadCases) {
