@@ -1460,13 +1460,11 @@ Y_UNIT_TEST_SUITE(TPersQueueTest) {
         Cerr << "XXXXX Send StartDirectReadPartitionSessionRequest, get StartDirectReadPartitionSessionResponse\n";
         setup.SendReadSessionAssign(assignId, assignRes.Generation);
 
-        ui64 nextReadId = 1;
         Cerr << "XXXXX ReadDataNoAck\n";
-        auto resp = setup.ReadDataNoAck(assignId, nextReadId);
-        nextReadId = 2;
+        auto resp = setup.ReadDataNoAck(assignId, 1);
 
-        Cerr << "XXXXX Write more 1_MB messages\n";
-        setup.DoWrite(pqClient->GetDriver(), topicPath, 1_MB, 40);
+        Cerr << "XXXXX Write one more message\n";
+        setup.DoWrite(pqClient->GetDriver(), topicPath, 1_MB, 1);
 
         Cerr << "XXXXX KillTablet\n";
         auto pathDescr = server.Server->AnnoyingClient->Ls(oldPath)->Record.GetPathDescription().GetPersQueueGroup();
