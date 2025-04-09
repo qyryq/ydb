@@ -1399,6 +1399,54 @@ Y_UNIT_TEST_SUITE(TPersQueueTest) {
         setup.DoWrite(pqClient->GetDriver(), topicPath, 1_MB, 1);
 
         Cerr << "XXXXX InitControlSession\n";
+        setup.InitControlSession(topicPath, /*readRequestBytes =*/ 100_KB);
+
+        Cerr << "XXXXX Get StartPartitionSessionRequest, send ...Response\n";
+        auto assignRes = setup.GetNextAssign(topicPath);
+        auto assignId = assignRes.AssignId;
+
+        Cerr << "XXXXX InitDirectSession\n";
+        setup.InitDirectSession(topicPath);
+
+        Cerr << "XXXXX Send StartDirectReadPartitionSessionRequest, get ...Response\n";
+        setup.SendReadSessionAssign(assignId, assignRes.Generation);
+
+        Cerr << "XXXXX ReadDataNoAck id=1\n";
+        setup.ReadDataNoAck(assignId, 1);
+
+        // Cerr << "XXXXX Write more 1_MB messages\n";
+        // setup.DoWrite(pqClient->GetDriver(), topicPath, 1_MB, 40);
+
+        // Cerr << "XXXXX ReadDataNoAck id=2\n";
+        // setup.ReadDataNoAck(assignId, 2);
+
+        Cerr << "XXXXX KillTablet\n";
+        auto pathDescr = server.Server->AnnoyingClient->Ls(oldPath)->Record.GetPathDescription().GetPersQueueGroup();
+        auto tabletId = pathDescr.GetPartitions(0).GetTabletId();
+        server.Server->AnnoyingClient->KillTablet(*(server.Server->CleverServer), tabletId);
+
+        Cerr << "XXXXX ExpectDestroyPartitionSession\n";
+        setup.ExpectDestroyPartitionSession(assignId);
+
+        Cerr << "XXXXX GetNextAssign\n";
+        auto nextAssignRes = setup.GetNextAssign(topicPath, assignRes.Generation);
+        assignId = nextAssignRes.AssignId;
+
+        Cerr << "XXXXX SendDirectReadAck\n";
+        setup.SendDirectReadAck(assignId, 1);
+    }
+
+    Y_UNIT_TEST(DirectReadBudgetOnRestartMin2) {
+        TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
+        SET_LOCALS;
+        TString topicPath{"acc/topic1"};
+        TString oldPath{"/Root/PQ/rt3.dc1--acc--topic1"};
+        TDirectReadTestSetup setup{server};
+
+        Cerr << "XXXXX Write 1 message\n";
+        setup.DoWrite(pqClient->GetDriver(), topicPath, 1_MB, 1);
+
+        Cerr << "XXXXX InitControlSession\n";
         setup.InitControlSession(topicPath, 100_KB);
 
         Cerr << "XXXXX Get StartPartitionSessionRequest, send StartPartitionSessionResponse\n";
