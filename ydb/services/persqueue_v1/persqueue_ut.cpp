@@ -1436,6 +1436,42 @@ Y_UNIT_TEST_SUITE(TPersQueueTest) {
         setup.SendDirectReadAck(assignId, 1);
     }
 
+    Y_UNIT_TEST(DirectReadWRWR) {
+        TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
+        SET_LOCALS;
+        TString topicPath{"acc/topic1"};
+        TString oldPath{"/Root/PQ/rt3.dc1--acc--topic1"};
+        TDirectReadTestSetup setup{server};
+
+        Cerr << "XXXXX Write 1 message\n";
+        setup.DoWrite(pqClient->GetDriver(), topicPath, 1_MB, 1);
+
+        Cerr << "XXXXX InitControlSession\n";
+        setup.InitControlSession(topicPath, 100_KB);
+
+        Cerr << "XXXXX Get StartPartitionSessionRequest, send StartPartitionSessionResponse\n";
+        auto assignRes = setup.GetNextAssign(topicPath);
+        UNIT_ASSERT_VALUES_EQUAL(assignRes.PartitionId, 0);
+        auto assignId = assignRes.AssignId;
+
+        Cerr << "XXXXX InitDirectSession\n";
+        setup.InitDirectSession(topicPath);
+
+        Cerr << "XXXXX Send StartDirectReadPartitionSessionRequest, get StartDirectReadPartitionSessionResponse\n";
+        setup.SendReadSessionAssign(assignId, assignRes.Generation);
+
+        Cerr << "XXXXX ReadDataNoAck 1\n";
+        auto resp = setup.ReadDataNoAck(assignId, 1);
+
+        Cerr << "XXXXX Write one more message\n";
+        setup.DoWrite(pqClient->GetDriver(), topicPath, 1_MB, 1);
+
+        setup.SendReadRequest(2_MB);
+
+        Cerr << "XXXXX ReadDataNoAck 2\n";
+        resp = setup.ReadDataNoAck(assignId, 2);
+    }
+
     Y_UNIT_TEST(DirectReadBudgetOnRestartMin2) {
         TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
         SET_LOCALS;

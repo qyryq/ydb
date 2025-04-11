@@ -236,8 +236,9 @@ void TDirectReadSessionManager::DeletePartitionSession(TPartitionSessionId parti
     }
 }
 
-void TDirectReadSessionManager::UpdatePartitionSession(TPartitionSessionId partitionSessionId, TPartitionLocation newLocation) {
+void TDirectReadSessionManager::UpdatePartitionSession(TPartitionSessionId partitionSessionId, TPartitionId partitionId, TPartitionLocation newLocation) {
     LOG_LAZY(Log, TLOG_DEBUG, GetLogPrefix() << "UpdatePartitionSession " << partitionSessionId
+                                             << ", partitionId=" << partitionId
                                              << ", newLocation={" << newLocation.GetNodeId() << ", " << newLocation.GetGeneration() << "}");
     auto locIt = Locations.find(partitionSessionId);
     if (locIt == Locations.end()) {
@@ -271,6 +272,7 @@ void TDirectReadSessionManager::UpdatePartitionSession(TPartitionSessionId parti
     // TODO(qyryq) std::move an old RetryState?
     StartPartitionSession({
         .PartitionSessionId = partitionSessionId,
+        .PartitionId = partitionId,
         .Location = newLocation,
         .NextDirectReadId = next,
         .LastDirectReadId = last,
@@ -534,21 +536,28 @@ void TDirectReadSession::OnReadDone(NYdbGrpc::TGrpcStatus&& grpcStatus, size_t c
         }
 
         if (!IsErrorMessage(*ServerMessage) && ServerMessage->server_message_case() != TDirectReadServerMessage::kDirectReadResponse) {
-            Cerr << (TStringBuilder() << "XXXXX subsession ServerMessage = " << ServerMessage->ShortDebugString() << '\n');
+            LOG_LAZY(Log, TLOG_DEBUG, GetLogPrefix() << "XXXXX subsession got message = " << ServerMessage->ShortDebugString());
         } else {
             const auto& data = ServerMessage->direct_read_response().partition_data();
             const auto partitionSessionId = ServerMessage->direct_read_response().partition_session_id();
+            auto partitionSessionIt = PartitionSessions.find(partitionSessionId);
+            if (partitionSessionIt == PartitionSessions.end()) {
+                LOG_LAZY(Log, TLOG_DEBUG, GetLogPrefix() << "XXXXX subsession got message = DirectReadResponse partitionSessionId=" << partitionSessionId << " not found");
+            }
             if (data.batches_size() == 0) {
-                Cerr << (TStringBuilder() << "XXXXX subsession ServerMessage = DirectReadResponse EMPTY\n");
+                LOG_LAZY(Log, TLOG_DEBUG, GetLogPrefix() << "XXXXX subsession got message = DirectReadResponse EMPTY");
             } else {
                 const auto& firstBatch = data.batches(0);
                 const auto firstOffset = firstBatch.message_data(0).offset();
                 const auto& lastBatch = data.batches(data.batches_size() - 1);
                 const auto lastOffset = lastBatch.message_data(lastBatch.message_data_size() - 1).offset();
-                Cerr << (TStringBuilder() << "XXXXX subsession ServerMessage = DirectReadResponse partitionSessionId = " << partitionSessionId
+                auto partitionId = partitionSessionIt == PartitionSessions.end() ? -1 : partitionSessionIt->second.PartitionId;
+                LOG_LAZY(Log, TLOG_DEBUG, GetLogPrefix() << "XXXXX subsession got message = DirectReadResponse"
+                     << " partitionSessionId = " << partitionSessionId
+                     << " partitionId = " << partitionId
                      << " directReadId = " << ServerMessage->direct_read_response().direct_read_id()
                      << " firstOffset = " << firstOffset
-                     << " lastOffset = " << lastOffset << '\n');
+                     << " lastOffset = " << lastOffset);
             }
         }
 
@@ -790,7 +799,7 @@ void TDirectReadSession::WriteToProcessorImpl(TDirectReadClientMessage&& req) {
     Y_ABORT_UNLESS(Lock.IsLocked());
 
     if (Processor) {
-        Cerr << (TStringBuilder() << "XXXXX subsession send request = " << req.ShortDebugString() << '\n');
+        LOG_LAZY(Log, TLOG_DEBUG, GetLogPrefix() << "XXXXX subsession send message = " << req.ShortDebugString());
         Processor->Write(std::move(req));
     }
 }

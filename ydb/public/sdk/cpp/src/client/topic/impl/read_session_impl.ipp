@@ -672,6 +672,7 @@ void TSingleClusterReadSessionImpl<UseMigrationProtocol>::ConfirmPartitionStream
 
             DirectReadSessionManager->StartPartitionSession({
                 .PartitionSessionId = static_cast<TPartitionSessionId>(partitionSessionId),
+                .PartitionId = static_cast<TPartitionId>(partitionStream->GetPartitionId()),
                 .Location = *location,
             });
         }
@@ -714,7 +715,7 @@ void TSingleClusterReadSessionImpl<UseMigrationProtocol>::ConfirmPartitionStream
                                 deferred);
     } else {
         PartitionStreams.erase(partitionStream->GetAssignId());
-        Cerr << "XXXXX PushEvent 717 TPartitionSessionClosedEvent StopConfirmedByUser" << Endl;
+        LOG_LAZY(Log, TLOG_DEBUG, GetLogPrefix() << "XXXXX PushEvent 717 TPartitionSessionClosedEvent StopConfirmedByUser");
         pushRes = EventsQueue->PushEvent(partitionStream,
             TClosedEvent(partitionStream, TClosedEvent::EReason::StopConfirmedByUser),
             deferred);
@@ -847,7 +848,7 @@ void TSingleClusterReadSessionImpl<UseMigrationProtocol>::WriteToProcessorImpl(
 
 
     if (Processor) {
-        Cerr << (TStringBuilder() << "XXXXX control session send request = " << req.ShortDebugString() << '\n');
+        LOG_LAZY(Log, TLOG_DEBUG, GetLogPrefix() << "XXXXX control session send message = " << req.ShortDebugString());
         Processor->Write(std::move(req));
     }
 }
@@ -914,9 +915,9 @@ void TSingleClusterReadSessionImpl<UseMigrationProtocol>::OnReadDone(NYdbGrpc::T
 
         if constexpr (!UseMigrationProtocol) {
             if (!IsErrorMessage(*ServerMessage) && ServerMessage->server_message_case() != TServerMessage<false>::kReadResponse) {
-                Cerr << (TStringBuilder() << "XXXXX control session ServerMessage = " << ServerMessage->ShortDebugString() << '\n');
+                LOG_LAZY(Log, TLOG_DEBUG, GetLogPrefix() << "XXXXX control session got message = " << ServerMessage->ShortDebugString());
             } else {
-                Cerr << (TStringBuilder() << "XXXXX control session ServerMessage = ReadResponse\n");
+                LOG_LAZY(Log, TLOG_DEBUG, GetLogPrefix() << "XXXXX control session got message = ReadResponse");
             }
         }
 
@@ -1364,7 +1365,7 @@ inline void TSingleClusterReadSessionImpl<false>::StopPartitionSessionImpl(
 
     if (graceful) {
         auto committedOffset = partitionStream->GetMaxCommittedOffset();
-        Cerr << "XXXXX PushEvent 1422 TStopPartitionSessionEvent" << Endl;
+        LOG_LAZY(Log, TLOG_DEBUG, GetLogPrefix() << "XXXXX PushEvent 1422 TStopPartitionSessionEvent");
         pushRes = EventsQueue->PushEvent(
             partitionStream,
             // TODO(qyryq) Is it safe to use GetMaxCommittedOffset here instead of StopPartitionSessionRequest.commmitted_offset?
@@ -1377,7 +1378,7 @@ inline void TSingleClusterReadSessionImpl<false>::StopPartitionSessionImpl(
         released.set_partition_session_id(partitionStream->GetAssignId());
         WriteToProcessorImpl(std::move(req));
         PartitionStreams.erase(partitionSessionId);
-        Cerr << "XXXXX PushEvent 1435 TPartitionSessionClosedEvent" << Endl;
+        LOG_LAZY(Log, TLOG_DEBUG, GetLogPrefix() << "XXXXX PushEvent 1435 TPartitionSessionClosedEvent");
         pushRes = EventsQueue->PushEvent(
             partitionStream,
             TReadSessionEvent::TPartitionSessionClosedEvent(partitionStream, TReadSessionEvent::TPartitionSessionClosedEvent::EReason::Lost),
@@ -1511,7 +1512,7 @@ inline void TSingleClusterReadSessionImpl<false>::OnReadDoneImpl(
     // Renew partition stream.
     TIntrusivePtr<TPartitionStreamImpl<false>>& partitionSession = PartitionStreams[partitionSessionId];
     if (partitionSession) {
-        Cerr << "XXXXX PushEvent 1504 TPartitionSessionClosedEvent" << Endl;
+        LOG_LAZY(Log, TLOG_DEBUG, GetLogPrefix() << "XXXXX PushEvent 1504 TPartitionSessionClosedEvent");
         bool pushRes = EventsQueue->PushEvent(
             partitionSession,
             TReadSessionEvent::TPartitionSessionClosedEvent(partitionSession, TReadSessionEvent::TPartitionSessionClosedEvent::EReason::Lost),
@@ -1538,7 +1539,7 @@ inline void TSingleClusterReadSessionImpl<false>::OnReadDoneImpl(
     Y_ABORT_UNLESS(!IsDirectRead() || msg.has_partition_location());
 
     // Send event to user.
-    Cerr << "XXXXX PushEvent 1530 TStartPartitionSessionEvent" << Endl;
+    LOG_LAZY(Log, TLOG_DEBUG, GetLogPrefix() << "XXXXX PushEvent 1530 TStartPartitionSessionEvent");
     bool pushRes = EventsQueue->PushEvent(
         partitionSession,
         TReadSessionEvent::TStartPartitionSessionEvent(partitionSession, msg.committed_offset(), msg.partition_offsets().end()),
@@ -1572,7 +1573,11 @@ inline void TSingleClusterReadSessionImpl<false>::OnReadDoneImpl(
     if (IsDirectRead()) {
         Y_ABORT_UNLESS(DirectReadSessionManager.Defined());
         it->second->SetLocation(msg.partition_location());
-        DirectReadSessionManager->UpdatePartitionSession(partitionSessionId, msg.partition_location());
+        DirectReadSessionManager->UpdatePartitionSession(
+            partitionSessionId,
+            static_cast<TPartitionId>(it->second->GetPartitionId()),
+            msg.partition_location()
+        );
     }
 }
 
@@ -1650,7 +1655,7 @@ inline void TSingleClusterReadSessionImpl<false>::OnReadDoneImpl(
         DirectReadSessionManager->StopPartitionSession(msg.partition_session_id());
     }
 
-    Cerr << "XXXXX PushEvent 1651 TEndPartitionSessionEvent" << Endl;
+    LOG_LAZY(Log, TLOG_DEBUG, GetLogPrefix() << "XXXXX PushEvent 1651 TEndPartitionSessionEvent");
     bool pushRes = EventsQueue->PushEvent(
             partitionStream,
             TReadSessionEvent::TEndPartitionSessionEvent(std::move(partitionStream), std::move(adjacentPartitionIds), std::move(childPartitionIds)),
@@ -1675,7 +1680,7 @@ inline void TSingleClusterReadSessionImpl<false>::OnReadDoneImpl(
         if (partitionStreamIt != PartitionStreams.end()) {
             auto partitionStream = partitionStreamIt->second;
             partitionStream->UpdateMaxCommittedOffset(rangeProto.committed_offset());
-            Cerr << "XXXXX PushEvent 1676 TCommitOffsetAcknowledgementEvent" << Endl;
+            LOG_LAZY(Log, TLOG_DEBUG, GetLogPrefix() << "XXXXX PushEvent 1676 TCommitOffsetAcknowledgementEvent");
             bool pushRes = EventsQueue->PushEvent(partitionStream,
                                     TReadSessionEvent::TCommitOffsetAcknowledgementEvent(
                                         partitionStream, rangeProto.committed_offset()),
@@ -1699,7 +1704,7 @@ inline void TSingleClusterReadSessionImpl<false>::OnReadDoneImpl(
     if (partitionStreamIt == PartitionStreams.end()) {
         return;
     }
-    Cerr << "XXXXX PushEvent 1700 TPartitionSessionStatusEvent" << Endl;
+    LOG_LAZY(Log, TLOG_DEBUG, GetLogPrefix() << "XXXXX PushEvent 1700 TPartitionSessionStatusEvent");
     bool pushRes = EventsQueue->PushEvent(partitionStreamIt->second,
                             TReadSessionEvent::TPartitionSessionStatusEvent(
                                 partitionStreamIt->second, msg.committed_offset(),
@@ -1765,7 +1770,7 @@ void TSingleClusterReadSessionImpl<UseMigrationProtocol>::DestroyAllPartitionStr
     >;
 
     for (auto&& [key, partitionStream] : PartitionStreams) {
-        Cerr << "XXXXX PushEvent 1766 TPartitionSessionClosedEvent" << Endl;
+        LOG_LAZY(Log, TLOG_DEBUG, GetLogPrefix() << "XXXXX PushEvent 1766 TPartitionSessionClosedEvent");
         bool pushRes = EventsQueue->PushEvent(partitionStream,
                                 TClosedEvent(std::move(partitionStream), TClosedEvent::EReason::ConnectionLost),
                                deferred);

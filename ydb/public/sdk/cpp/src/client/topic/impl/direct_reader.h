@@ -80,6 +80,7 @@ public:
     };
 
     TPartitionSessionId PartitionSessionId;
+    TPartitionId PartitionId;
     TPartitionLocation Location;
     EState State = EState::IDLE;
     IRetryPolicy::IRetryState::TPtr RetryState = {};
@@ -233,7 +234,7 @@ public:
     ~TDirectReadSessionManager();
 
     void StartPartitionSession(TDirectReadPartitionSession&&);
-    void UpdatePartitionSession(TPartitionSessionId, TPartitionLocation);
+    void UpdatePartitionSession(TPartitionSessionId, TPartitionId, TPartitionLocation);
     TDirectReadSessionContextPtr ErasePartitionSession(TPartitionSessionId);
     void StopPartitionSession(TPartitionSessionId);
 
