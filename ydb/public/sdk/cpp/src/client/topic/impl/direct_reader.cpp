@@ -535,29 +535,31 @@ void TDirectReadSession::OnReadDone(NYdbGrpc::TGrpcStatus&& grpcStatus, size_t c
             return;
         }
 
-        if (!IsErrorMessage(*ServerMessage) && ServerMessage->server_message_case() != TDirectReadServerMessage::kDirectReadResponse) {
-            LOG_LAZY(Log, TLOG_DEBUG, GetLogPrefix() << "XXXXX subsession got message = " << ServerMessage->ShortDebugString());
-        } else {
-            const auto& data = ServerMessage->direct_read_response().partition_data();
-            const auto partitionSessionId = ServerMessage->direct_read_response().partition_session_id();
-            auto partitionSessionIt = PartitionSessions.find(partitionSessionId);
-            if (partitionSessionIt == PartitionSessions.end()) {
-                LOG_LAZY(Log, TLOG_DEBUG, GetLogPrefix() << "XXXXX subsession got message = DirectReadResponse partitionSessionId=" << partitionSessionId << " not found");
-            }
-            if (data.batches_size() == 0) {
-                LOG_LAZY(Log, TLOG_DEBUG, GetLogPrefix() << "XXXXX subsession got message = DirectReadResponse EMPTY");
+        if (!IsErrorMessage(*ServerMessage)) {
+            if (ServerMessage->server_message_case() != TDirectReadServerMessage::kDirectReadResponse) {
+                LOG_LAZY(Log, TLOG_DEBUG, GetLogPrefix() << "XXXXX subsession got message = " << ServerMessage->ShortDebugString());
             } else {
-                const auto& firstBatch = data.batches(0);
-                const auto firstOffset = firstBatch.message_data(0).offset();
-                const auto& lastBatch = data.batches(data.batches_size() - 1);
-                const auto lastOffset = lastBatch.message_data(lastBatch.message_data_size() - 1).offset();
-                auto partitionId = partitionSessionIt == PartitionSessions.end() ? -1 : partitionSessionIt->second.PartitionId;
-                LOG_LAZY(Log, TLOG_DEBUG, GetLogPrefix() << "XXXXX subsession got message = DirectReadResponse"
-                     << " partitionSessionId = " << partitionSessionId
-                     << " partitionId = " << partitionId
-                     << " directReadId = " << ServerMessage->direct_read_response().direct_read_id()
-                     << " firstOffset = " << firstOffset
-                     << " lastOffset = " << lastOffset);
+                const auto& data = ServerMessage->direct_read_response().partition_data();
+                const auto partitionSessionId = ServerMessage->direct_read_response().partition_session_id();
+                auto partitionSessionIt = PartitionSessions.find(partitionSessionId);
+                if (partitionSessionIt == PartitionSessions.end()) {
+                    LOG_LAZY(Log, TLOG_DEBUG, GetLogPrefix() << "XXXXX subsession got message = DirectReadResponse partitionSessionId=" << partitionSessionId << " not found");
+                }
+                if (data.batches_size() == 0) {
+                    LOG_LAZY(Log, TLOG_DEBUG, GetLogPrefix() << "XXXXX subsession got message = DirectReadResponse EMPTY");
+                } else {
+                    const auto& firstBatch = data.batches(0);
+                    const auto firstOffset = firstBatch.message_data(0).offset();
+                    const auto& lastBatch = data.batches(data.batches_size() - 1);
+                    const auto lastOffset = lastBatch.message_data(lastBatch.message_data_size() - 1).offset();
+                    auto partitionId = partitionSessionIt == PartitionSessions.end() ? -1 : partitionSessionIt->second.PartitionId;
+                    LOG_LAZY(Log, TLOG_DEBUG, GetLogPrefix() << "XXXXX subsession got message = DirectReadResponse"
+                        << " partitionSessionId = " << partitionSessionId
+                        << " partitionId = " << partitionId
+                        << " directReadId = " << ServerMessage->direct_read_response().direct_read_id()
+                        << " firstOffset = " << firstOffset
+                        << " lastOffset = " << lastOffset);
+                }
             }
         }
 

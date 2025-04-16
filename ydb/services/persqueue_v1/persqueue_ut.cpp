@@ -1436,40 +1436,87 @@ Y_UNIT_TEST_SUITE(TPersQueueTest) {
         setup.SendDirectReadAck(assignId, 1);
     }
 
-    Y_UNIT_TEST(DirectReadWRWR) {
+    Y_UNIT_TEST(DirectReadWriteReadKillReadRead_shouldSendCorrectOffsets) {
+        // Write one small message.
+        // Read the message.
+        // Write a lot of larger messages.
+        // Kill the tablet.
+        // Read the messages, check offsets.
+
+        auto LOG = [](TStringBuf message) { Cerr << (TStringBuilder() << "XXXXX " << message << '\n'); };
         TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
         SET_LOCALS;
         TString topicPath{"acc/topic1"};
         TString oldPath{"/Root/PQ/rt3.dc1--acc--topic1"};
         TDirectReadTestSetup setup{server};
 
-        Cerr << "XXXXX Write 1 message\n";
-        setup.DoWrite(pqClient->GetDriver(), topicPath, 1_MB, 1);
+        ui64 smallMessageSize = 10_KB;
+        ui64 largeMessageSize = 100_KB;
 
-        Cerr << "XXXXX InitControlSession\n";
-        setup.InitControlSession(topicPath, 100_KB);
+        LOG("Write a small message");
+        setup.DoWrite(pqClient->GetDriver(), topicPath, smallMessageSize, 1);
 
-        Cerr << "XXXXX Get StartPartitionSessionRequest, send StartPartitionSessionResponse\n";
+        i64 totalMessages = 1000;
+
+        LOG("InitControlSession");
+        setup.InitControlSession(topicPath, 1_KB);
+
+        LOG("GetNextAssign");
         auto assignRes = setup.GetNextAssign(topicPath);
         UNIT_ASSERT_VALUES_EQUAL(assignRes.PartitionId, 0);
-        auto assignId = assignRes.AssignId;
 
-        Cerr << "XXXXX InitDirectSession\n";
+        LOG("InitDirectSession");
         setup.InitDirectSession(topicPath);
 
-        Cerr << "XXXXX Send StartDirectReadPartitionSessionRequest, get StartDirectReadPartitionSessionResponse\n";
-        setup.SendReadSessionAssign(assignId, assignRes.Generation);
+        LOG("SendReadSessionAssign");
+        setup.SendReadSessionAssign(assignRes.AssignId, assignRes.Generation);
 
-        Cerr << "XXXXX ReadDataNoAck 1\n";
-        auto resp = setup.ReadDataNoAck(assignId, 1);
+        LOG("ReadDataNoAck #1");
+        auto resp = setup.ReadDataNoAck(assignRes.AssignId, 1, 2);
 
-        Cerr << "XXXXX Write one more message\n";
-        setup.DoWrite(pqClient->GetDriver(), topicPath, 1_MB, 1);
+        setup.DoWrite(pqClient->GetDriver(), topicPath, largeMessageSize, totalMessages);
 
-        setup.SendReadRequest(2_MB);
+        LOG("KillTablet");
+        auto pathDescr = server.Server->AnnoyingClient->Ls(oldPath)->Record.GetPathDescription().GetPersQueueGroup();
+        auto tabletId = pathDescr.GetPartitions(0).GetTabletId();
+        server.Server->AnnoyingClient->KillTablet(*(server.Server->CleverServer), tabletId);
 
-        Cerr << "XXXXX ReadDataNoAck 2\n";
-        resp = setup.ReadDataNoAck(assignId, 2);
+        LOG("ExpectDestroyPartitionSession");
+        setup.ExpectDestroyPartitionSession(assignRes.AssignId);
+
+        LOG("GetNextAssign");
+        auto nextAssignRes = setup.GetNextAssign(topicPath, assignRes.Generation);
+
+        Sleep(TDuration::Seconds(1));
+
+        LOG("SendReadSessionAssign");
+        setup.SendReadSessionAssign(nextAssignRes.AssignId, nextAssignRes.Generation);
+
+        i64 gotMessages = 0;
+
+        LOG("SendReadRequest to receive the first message");
+        setup.SendReadRequest(largeMessageSize + 1_KB);
+
+        for (i64 i = 1, startOffset = 0, endOffset = 0; gotMessages < totalMessages; ++i) {
+            LOG(TStringBuilder() << "ReadDataNoAck #" << i);
+            auto resp = setup.ReadDataNoAck(nextAssignRes.AssignId, i, 2);
+            const auto& partitionData = resp.Response.direct_read_response().partition_data();
+            UNIT_ASSERT_GT(partitionData.batches_size(), 0);
+
+            startOffset = partitionData.batches(0).message_data(0).offset();
+            UNIT_ASSERT_VALUES_EQUAL(endOffset, startOffset);
+
+            const auto& lastBatch = partitionData.batches(partitionData.batchesSize() - 1);
+            endOffset = lastBatch.message_data(lastBatch.message_data_size() - 1).offset() + 1;
+            for (const auto& batch : partitionData.batches()) {
+                gotMessages += batch.message_data_size();
+            }
+
+            LOG("SendReadRequest to receive the next message");
+            setup.SendReadRequest(2 * resp.Response.direct_read_response().bytes_size());
+
+            setup.SendDirectReadAck(nextAssignRes.AssignId, i);
+        }
     }
 
     Y_UNIT_TEST(DirectReadBudgetOnRestartMin2) {
