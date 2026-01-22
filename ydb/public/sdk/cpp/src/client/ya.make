@@ -30,6 +30,8 @@ RECURSE(
     import
     operation
     params
+    persqueue_over_topic
+    persqueue_over_topic/impl
     persqueue_public
     persqueue_public/impl
     proto
